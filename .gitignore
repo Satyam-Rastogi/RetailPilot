@@ -1,0 +1,40 @@
+# Node frontend artifacts
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.cache/
+
+# Python backend artifacts
+backend/__pycache__/
+backend/**/*.pyc
+backend/venv/
+backend/.venv/
+backend/.pytest_cache/
+backend/shop_management.db
+backend/*.db
+.env
+.env.local
+*.env*
+
+# General artifacts
+.DS_Store
+Thumbs.db
+*.log
+logs/
+.coverage
+.cache/
+
+# Env/configs and secrets
+*.pem
+*.key
+*.crt
+
+# IDE / OS
+.vscode/
+.idea/
+
+# MD files policy: ignore all Markdown files except README.md
+*.md
+!README.md
+
+NUL
