@@ -4,43 +4,61 @@ from typing import List, Optional
 from app.db.session import get_db
 from app.models.item import ItemModel
 from app.schemas.item import Item, ItemCreate, ItemUpdate, ItemListResponse
+from app.schemas.pagination import PaginatedResponse
+from app.utils.pagination import paginate_query
 
 router = APIRouter()
 
 
-@router.get("/", response_model=List[ItemListResponse])
+@router.get("/", response_model=PaginatedResponse[ItemListResponse])
 def get_items(
   skip: int = Query(0, ge=0),
   limit: int = Query(100, ge=1, le=100),
+  page: int = Query(1, ge=1),
+  page_size: int = Query(100, ge=1, le=100),
   search: Optional[str] = None,
   db: Session = Depends(get_db)
 ):
   query = db.query(ItemModel)
-  
+
   if search:
     query = query.filter(ItemModel.item_name.ilike(f"%{search}%"))
-  
-  items = query.offset(skip).limit(limit).all()
-  
+
+  if page_size > 0:
+    data, total_items, total_pages = paginate_query(query, page, page_size)
+  else:
+    data = query.all()
+    total_items = len(data)
+    total_pages = 1
+
   result = []
-  for item in items:
+  for item in data:
     item_dict = {
       "id": item.id,
       "item_name": item.item_name,
       "brand_name": item.brand_name,
       "sku": item.sku,
-      "current_stock_quantity": item.current_stock_quantity,
+      "material": item.material,
+      "purchase_price": item.purchase_price,
       "selling_price_retail": item.selling_price_retail,
       "selling_price_wholesale": item.selling_price_wholesale,
-      "enable_low_stock_alert": item.enable_low_stock_alert,
+      "current_stock_quantity": item.current_stock_quantity,
+      "unit_of_measurement": item.unit_of_measurement,
       "low_stock_threshold": item.low_stock_threshold,
-      "is_low_stock": item.enable_low_stock_alert and 
-                      item.low_stock_threshold is not None and 
-                      item.current_stock_quantity <= item.low_stock_threshold
+      "enable_low_stock_alert": item.enable_low_stock_alert,
+      "is_low_stock": item.current_stock_quantity <= (item.low_stock_threshold or 0) if item.enable_low_stock_alert else False
     }
     result.append(ItemListResponse(**item_dict))
-  
-  return result
+
+  return PaginatedResponse(
+    data=result,
+    total_items=total_items,
+    total_pages=total_pages,
+    current_page=page if page_size > 0 else 1,
+    page_size=page_size if page_size > 0 else total_items,
+    has_next=page < total_pages if page_size > 0 else False,
+    has_previous=page > 1 if page_size > 0 else False
+  )
 
 
 @router.get("/{item_id}", response_model=Item)
@@ -93,9 +111,11 @@ def adjust_stock(item_id: int, payload: StockAdjust, db: Session = Depends(get_d
   item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
   if not item:
     raise HTTPException(status_code=404, detail="Item not found")
+  
   new_qty = item.current_stock_quantity + payload.delta
   if new_qty < 0:
     raise HTTPException(status_code=400, detail="Stock cannot be negative")
+  
   item.current_stock_quantity = new_qty
   db.commit()
   db.refresh(item)

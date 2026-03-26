@@ -4,7 +4,7 @@ from typing import List, Optional
 from datetime import datetime
 from app.db.session import get_db
 from app.models.payment import PaymentModel, PaymentAllocationModel
-from app.models.invoice import InvoiceModel
+from app.models.invoice import InvoiceModel, PaymentStatus
 from app.models.customer import CustomerModel
 from app.schemas.payment import (
   PaymentCreate,
@@ -15,6 +15,8 @@ from app.schemas.payment import (
   InvoiceAllocationDetail,
   PaymentUpdate,
 )
+from app.schemas.pagination import PaginatedResponse
+from app.utils.pagination import paginate_query
 
 router = APIRouter()
 
@@ -69,11 +71,16 @@ def allocate_payment(
     remaining -= alloc
     allocations.append(allocation)
 
+    if invoice.amount_paid >= invoice.grand_total:
+      invoice.payment_status = PaymentStatus.PAID
+    else:
+      invoice.payment_status = PaymentStatus.PARTIALLY_PAID
+
     if remaining <= 0:
       break
 
   if remaining > 0:
-    payment.notes = f"Credit balance: {remaining:.2f}"
+    payment.credit_balance = remaining
 
   db.commit()
   db.refresh(payment)
@@ -97,7 +104,11 @@ def create_payment(
     date=payment_data.date,
   )
 
-  payment.notes = payment_data.notes or payment.notes
+  if payment_data.notes:
+    payment.notes = payment_data.notes
+
+  payment.payment_method = payment_data.payment_method or "cash"
+  payment.reference_number = payment_data.reference_number
 
   db.commit()
   db.refresh(payment)
@@ -120,19 +131,22 @@ def create_payment(
     customer_name=customer.name,
     date=payment.date,
     amount=payment.amount,
+    payment_method=payment.payment_method,
+    reference_number=payment.reference_number,
+    credit_balance=payment.credit_balance,
     notes=payment.notes,
     created_at=payment.created_at,
     allocations=allocation_responses
   )
 
 
-@router.get("/", response_model=List[PaymentResponse])
+@router.get("/", response_model=PaginatedResponse[PaymentResponse])
 def get_payments(
   customer_id: Optional[int] = None,
   date_from: Optional[str] = None,
   date_to: Optional[str] = None,
-  skip: int = 0,
-  limit: int = 100,
+  page: int = 1,
+  page_size: int = 100,
   db: Session = Depends(get_db)
 ):
   query = db.query(PaymentModel)
@@ -154,10 +168,10 @@ def get_payments(
     except ValueError:
       raise HTTPException(status_code=400, detail="Invalid date_to format. Use YYYY-MM-DD")
 
-  payments = query.options(joinedload(PaymentModel.customer)).order_by(PaymentModel.date.desc()).offset(skip).limit(limit).all()
+  data, total_items, total_pages = paginate_query(query, page, page_size)
 
   result = []
-  for payment in payments:
+  for payment in data:
     allocations = db.query(PaymentAllocationModel).options(joinedload(PaymentAllocationModel.invoice)).filter(PaymentAllocationModel.payment_id == payment.id).all()
     result.append(
       PaymentResponse(
@@ -166,6 +180,9 @@ def get_payments(
         customer_name=payment.customer.name if payment.customer else None,
         date=payment.date,
         amount=payment.amount,
+        payment_method=payment.payment_method,
+        reference_number=payment.reference_number,
+        credit_balance=payment.credit_balance,
         notes=payment.notes,
         created_at=payment.created_at,
         allocations=[
@@ -182,7 +199,15 @@ def get_payments(
       )
     )
 
-  return result
+  return PaginatedResponse(
+    data=result,
+    total_items=total_items,
+    total_pages=total_pages,
+    current_page=page,
+    page_size=page_size if page_size > 0 else total_items,
+    has_next=page < total_pages,
+    has_previous=page > 1
+  )
 
 
 @router.get("/{payment_id}", response_model=PaymentResponse)
@@ -199,6 +224,9 @@ def get_payment(payment_id: int, db: Session = Depends(get_db)):
     customer_name=payment.customer.name if payment.customer else None,
     date=payment.date,
     amount=payment.amount,
+    payment_method=payment.payment_method,
+    reference_number=payment.reference_number,
+    credit_balance=payment.credit_balance,
     notes=payment.notes,
     created_at=payment.created_at,
     allocations=[
@@ -227,6 +255,10 @@ def update_payment(
 
   if payment_update.date is not None:
     payment.date = payment_update.date
+  if payment_update.payment_method is not None:
+    payment.payment_method = payment_update.payment_method
+  if payment_update.reference_number is not None:
+    payment.reference_number = payment_update.reference_number
   if payment_update.notes is not None:
     payment.notes = payment_update.notes
 
@@ -241,6 +273,9 @@ def update_payment(
     customer_name=payment.customer.name if payment.customer else None,
     date=payment.date,
     amount=payment.amount,
+    payment_method=payment.payment_method,
+    reference_number=payment.reference_number,
+    credit_balance=payment.credit_balance,
     notes=payment.notes,
     created_at=payment.created_at,
     allocations=[
@@ -271,7 +306,11 @@ def delete_payment(
   for alloc in allocations:
     invoice = db.query(InvoiceModel).filter(InvoiceModel.id == alloc.invoice_id).first()
     if invoice:
-      invoice.amount_paid -= alloc.allocated_amount
+      invoice.amount_paid = max(0.0, invoice.amount_paid - alloc.allocated_amount)
+      if invoice.amount_paid <= 0:
+        invoice.payment_status = PaymentStatus.UNPAID
+      elif invoice.amount_paid < invoice.grand_total:
+        invoice.payment_status = PaymentStatus.PARTIALLY_PAID
     db.delete(alloc)
 
   db.delete(payment)
@@ -285,6 +324,8 @@ def get_customer_ledger(
   customer_id: int,
   date_from: Optional[str] = None,
   date_to: Optional[str] = None,
+  page: int = 1,
+  page_size: int = 100,
   db: Session = Depends(get_db)
 ):
   customer = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
@@ -306,19 +347,26 @@ def get_customer_ledger(
     except ValueError:
       raise HTTPException(status_code=400, detail="Invalid date_to format. Use YYYY-MM-DD")
 
-  invoices = invoices_query.order_by(InvoiceModel.invoice_date.asc()).all()
+  # Order BEFORE pagination - avoid AttributeError on list object
+  invoices_query = invoices_query.order_by(InvoiceModel.invoice_date.asc())
+
+  # Now paginate - result is already ordered
+  invoices, invoice_total, invoice_pages = paginate_query(invoices_query, page, page_size)
 
   invoice_ledger = []
   total_invoiced = 0
+  total_paid = 0
   for invoice in invoices:
     unpaid = invoice.grand_total - invoice.amount_paid
     total_invoiced += invoice.grand_total
+    total_paid += invoice.amount_paid
     status = "Paid" if unpaid <= 0 else ("Partially Paid" if invoice.amount_paid > 0 else "Unpaid")
     invoice_ledger.append(
       InvoiceLedgerResponse(
         id=invoice.id,
         invoice_number=invoice.invoice_number,
         invoice_date=invoice.invoice_date,
+        due_date=invoice.due_date,
         grand_total=invoice.grand_total,
         amount_paid=invoice.amount_paid,
         unpaid=unpaid,
@@ -326,16 +374,22 @@ def get_customer_ledger(
       )
     )
 
-  payments = db.query(PaymentModel).filter(PaymentModel.customer_id == customer_id).all()
+  total_unpaid = total_invoiced - total_paid
+
+  payments_query = db.query(PaymentModel).filter(PaymentModel.customer_id == customer_id)
 
   if date_from:
-    payments = payments.filter(PaymentModel.date >= datetime.strptime(date_from, "%Y-%m-%d"))
+    payments_query = payments_query.filter(PaymentModel.date >= datetime.strptime(date_from, "%Y-%m-%d"))
 
   if date_to:
-    payments = payments.filter(PaymentModel.date <= datetime.strptime(date_to, "%Y-%m-%d"))
+    payments_query = payments_query.filter(PaymentModel.date <= datetime.strptime(date_to, "%Y-%m-%d"))
 
-  total_paid = sum(p.amount for p in payments)
-  total_unpaid = total_invoiced - total_paid
+  if page_size > 0:
+    payments, payment_total, payment_pages = paginate_query(payments_query, page, page_size)
+  else:
+    payments = payments_query.all()
+    payment_total = len(payments)
+    payment_pages = 1
 
   payments_response = []
   for p in payments:
@@ -350,9 +404,22 @@ def get_customer_ledger(
         customer_name=customer.name,
         date=p.date,
         amount=p.amount,
+        payment_method=p.payment_method,
+        reference_number=p.reference_number,
+        credit_balance=p.credit_balance,
         notes=p.notes,
         created_at=p.created_at,
-        allocations=[]
+        allocations=[
+          PaymentAllocationResponse(
+            id=alloc.id,
+            payment_id=alloc.payment_id,
+            invoice_id=alloc.invoice_id,
+            invoice_number=alloc.invoice.invoice_number if alloc.invoice else None,
+            allocated_amount=alloc.allocated_amount,
+            created_at=alloc.created_at
+          )
+          for alloc in allocations
+        ]
       )
     )
 
@@ -367,11 +434,13 @@ def get_customer_ledger(
   )
 
 
-@router.get("/customer/{customer_id}/ledger/invoices", response_model=List[InvoiceLedgerResponse])
+@router.get("/customer/{customer_id}/ledger/invoices", response_model=PaginatedResponse[InvoiceLedgerResponse])
 def get_customer_invoices_ledger(
   customer_id: int,
   date_from: Optional[str] = None,
   date_to: Optional[str] = None,
+  page: int = 1,
+  page_size: int = 100,
   db: Session = Depends(get_db)
 ):
   customer = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
@@ -379,7 +448,6 @@ def get_customer_invoices_ledger(
     raise HTTPException(status_code=404, detail="Customer not found")
 
   query = db.query(InvoiceModel).filter(InvoiceModel.customer_id == customer_id)
-
   if date_from:
     try:
       from_date = datetime.strptime(date_from, "%Y-%m-%d")
@@ -394,7 +462,15 @@ def get_customer_invoices_ledger(
     except ValueError:
       raise HTTPException(status_code=400, detail="Invalid date_to format. Use YYYY-MM-DD")
 
-  invoices = query.order_by(InvoiceModel.invoice_date.asc()).all()
+  # Order BEFORE pagination - avoid AttributeError on list object
+  query = query.order_by(InvoiceModel.invoice_date.asc())
+
+  if page_size > 0:
+    invoices, total_items, total_pages = paginate_query(query, page, page_size)
+  else:
+    invoices = query.all()
+    total_items = len(invoices)
+    total_pages = 1
 
   result = []
   for invoice in invoices:
@@ -405,6 +481,7 @@ def get_customer_invoices_ledger(
         id=invoice.id,
         invoice_number=invoice.invoice_number,
         invoice_date=invoice.invoice_date,
+        due_date=invoice.due_date,
         grand_total=invoice.grand_total,
         amount_paid=invoice.amount_paid,
         unpaid=unpaid,
@@ -412,7 +489,15 @@ def get_customer_invoices_ledger(
       )
     )
 
-  return result
+  return PaginatedResponse(
+    data=result,
+    total_items=total_items,
+    total_pages=total_pages,
+    current_page=page if page_size > 0 else 1,
+    page_size=page_size if page_size > 0 else total_items,
+    has_next=page < total_pages if page_size > 0 else False,
+    has_previous=page > 1 if page_size > 0 else False
+  )
 
 
 @router.get("/invoices/{invoice_id}/allocations", response_model=List[InvoiceAllocationDetail])

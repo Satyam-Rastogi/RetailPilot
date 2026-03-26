@@ -32,9 +32,11 @@ logs/
 # IDE / OS
 .vscode/
 .idea/
+.claude/
 
 # MD files policy: ignore all Markdown files except README.md
 *.md
 !README.md
 
 NUL
+Prompt.txt

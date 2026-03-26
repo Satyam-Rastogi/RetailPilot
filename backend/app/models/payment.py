@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, Float, DateTime, ForeignKey, Text, String
 from sqlalchemy.orm import relationship
 from app.db.base import Base
 from app.models.customer import CustomerModel
@@ -13,6 +13,9 @@ class PaymentModel(Base):
   customer_id = Column(Integer, ForeignKey("customers.id"), nullable=False)
   date = Column(DateTime, nullable=False)
   amount = Column(Float, nullable=False)
+  payment_method = Column(String(20), nullable=True, default="cash")
+  reference_number = Column(String(100), nullable=True)
+  credit_balance = Column(Float, nullable=True, default=0.0)
   notes = Column(Text, nullable=True)
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

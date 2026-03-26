@@ -5,7 +5,7 @@ from .item import ItemModel
 from .stock_audit import StockAuditModel
 from .invoice import InvoiceModel, InvoiceLineItemModel
 from .invoice_sequence import InvoiceSequenceModel
-from .return_receipt import ReturnReceiptModel, ReturnLineItemModel
+from .return_receipt import ReturnReceiptModel, ReturnLineItemModel, ReturnReasonCategory
 from .payment import PaymentModel, PaymentAllocationModel
 
 __all__ = [
@@ -19,6 +19,7 @@ __all__ = [
   "InvoiceSequenceModel",
   "ReturnReceiptModel",
   "ReturnLineItemModel",
+  "ReturnReasonCategory",
   "PaymentModel",
   "PaymentAllocationModel",
 ]

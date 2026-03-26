@@ -21,9 +21,11 @@ export interface CompanyProfile {
 export interface CustomerBase {
   name: string
   phone_number?: string
+  email?: string
   address?: string
   gstin?: string
   customer_type?: string
+  credit_days?: number
   notes?: string
 }
 
@@ -38,6 +40,7 @@ export interface CustomerListResponse {
   name: string
   phone_number?: string
   customer_type: string
+  credit_days?: number
 }
 
 export interface SupplierBase {
@@ -122,10 +125,13 @@ export interface InvoiceBase {
   customer_id?: number
   invoice_number?: string
   invoice_date?: string
+  due_date?: string
   line_items: InvoiceLineItem[]
   discount_type?: 'amount' | 'percent'
   discount_amount?: number
   tax_rate?: number
+  po_number?: string
+  shipping_address?: string
   notes?: string
   payment_status?: 'paid' | 'partial' | 'unpaid'
   grand_total?: number
@@ -152,11 +158,12 @@ export interface InvoiceListResponse {
   id: number
   invoice_number: string
   customer_name: string
-  invoice_date: string
-  total_amount: number
-  payment_status: string
   customer_id: number
   customer_type?: string
+  invoice_date: string
+  due_date?: string
+  total_amount: number
+  payment_status: string
 }
 
 export interface InvoiceCalculationResponse {
@@ -166,11 +173,31 @@ export interface InvoiceCalculationResponse {
   grand_total: number
 }
 
+export enum ReturnReasonCategory {
+  DAMAGED = "damaged_goods",
+  UNABLE_TO_PAY = "was_not_able_to_pay",
+  UNABLE_TO_SELL = "was_not_able_to_sell",
+  BETTER_DEAL = "found_a_better_deal",
+  QUALITY_ISSUE = "quality_issue",
+  WRONG_ITEM = "wrong_item_delivered",
+  OTHER = "other",
+}
+
+export interface StockAuditEntry {
+  id: number
+  item_id: number
+  item_name?: string
+  quantity_change: number
+  reason: string
+  created_at: string
+}
+
 export interface ReturnLineItemBase {
   item_id: number
   quantity_returned: number
   amount: number
   reason?: string
+  reason_category?: ReturnReasonCategory
 }
 
 export interface ReturnLineItemCreate extends ReturnLineItemBase {
@@ -184,6 +211,7 @@ export interface ReturnLineItem extends ReturnLineItemBase {
   quantity_returned: number
   amount: number
   reason?: string
+  reason_category?: ReturnReasonCategory
 }
 
 export interface ReturnReceiptBase {
@@ -195,6 +223,9 @@ export interface ReturnReceiptBase {
 
 export interface ReturnReceiptCreate extends ReturnReceiptBase {
   line_items: ReturnLineItemCreate[]
+  is_partial: boolean
+  total_items_in_invoice: number
+  items_returned_count: number
 }
 
 export interface ReturnReceipt extends ReturnReceiptBase {
@@ -202,10 +233,17 @@ export interface ReturnReceipt extends ReturnReceiptBase {
   invoice_id: number
   invoice_number: string
   invoice_date: string
+  customer_name?: string
+  is_partial: boolean
+  total_items_in_invoice: number
+  items_returned_count: number
+  reason_category?: string
   total_credit: number
   notes: string
+  return_date: string
   created_at: string
   line_items: ReturnLineItem[]
+  stock_audit?: StockAuditEntry[]
 }
 
 export interface PaymentAllocation {
@@ -223,6 +261,9 @@ export interface Payment {
   customer_name: string | null
   date: string
   amount: number
+  payment_method: string | null
+  reference_number: string | null
+  credit_balance: number | null
   notes: string | null
   created_at: string
   allocations: PaymentAllocation[]
@@ -232,11 +273,15 @@ export interface PaymentCreate {
   customer_id: number
   date: string
   amount: number
+  payment_method?: string
+  reference_number?: string
   notes?: string
 }
 
 export interface PaymentUpdate {
   date?: string
+  payment_method?: string
+  reference_number?: string
   notes?: string
 }
 
@@ -244,6 +289,7 @@ export interface InvoiceLedger {
   id: number
   invoice_number: string
   invoice_date: string
+  due_date?: string
   grand_total: number
   amount_paid: number
   unpaid: number

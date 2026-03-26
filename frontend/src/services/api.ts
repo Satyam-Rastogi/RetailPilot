@@ -5,6 +5,7 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  maxRedirects: 5,
 })
 
 export const companyProfileService = {
@@ -15,61 +16,153 @@ export const companyProfileService = {
 
 export const customerService = {
   list: (params?: { skip?: number; limit?: number; search?: string }) =>
-    api.get('/customers', { params }).then(res => res.data),
-  get: (id: number) => api.get(`/customers/${id}`).then(res => res.data),
-  create: (data: any) => api.post('/customers', data).then(res => res.data),
-  update: (id: number, data: any) => api.put(`/customers/${id}`, data).then(res => res.data),
-  delete: (id: number) => api.delete(`/customers/${id}`).then(res => res.data),
+    api.get('/customers/', { params }).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  get: (id: number) => api.get(`/customers/${id}`).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  create: (data: any) => api.post('/customers/', data).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  update: (id: number, data: any) => api.put(`/customers/${id}`, data).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  delete: (id: number) => api.delete(`/customers/${id}`).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
 }
 
 export const supplierService = {
   list: (params?: { skip?: number; limit?: number; search?: string }) =>
-    api.get('/suppliers', { params }).then(res => res.data),
-  get: (id: number) => api.get(`/suppliers/${id}`).then(res => res.data),
-  create: (data: any) => api.post('/suppliers', data).then(res => res.data),
-  update: (id: number, data: any) => api.put(`/suppliers/${id}`, data).then(res => res.data),
-  delete: (id: number) => api.delete(`/suppliers/${id}`).then(res => res.data),
+    api.get('/suppliers/', { params }).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  get: (id: number) => api.get(`/suppliers/${id}`).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  create: (data: any) => api.post('/suppliers/', data).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  update: (id: number, data: any) => api.put(`/suppliers/${id}`, data).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
+  delete: (id: number) => api.delete(`/suppliers/${id}`).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
 }
 
 export const itemService = {
   list: (params?: { skip?: number; limit?: number; search?: string }) =>
-    api.get('/items', { params }).then(res => res.data),
-  get: (id: number) => api.get(`/items/${id}`).then(res => res.data),
-  create: (data: any) => api.post('/items', data).then(res => res.data),
-  update: (id: number, data: any) => api.put(`/items/${id}`, data).then(res => res.data),
-  delete: (id: number) => api.delete(`/items/${id}`).then(res => res.data),
-  adjustStock: (id: number, data: any) => api.post(`/items/${id}/stock`, data).then(res => res.data),
+    api.get('/items/', { params }).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  get: (id: number) => api.get(`/items/${id}`).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  create: (data: any) => api.post('/items/', data).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  update: (id: number, data: any) => api.put(`/items/${id}`, data).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  delete: (id: number) => api.delete(`/items/${id}`).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  adjustStock: (id: number, data: any) => api.post(`/items/${id}/stock`, data).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
 }
 
 export const invoiceService = {
   list: (params?: { skip?: number; limit?: number; date_from?: string; date_to?: string; customer_id?: number; customer_name?: string; invoice_number?: string; sort_by?: string; sort_dir?: string }) =>
-    api.get('/invoices', { params }).then(res => res.data),
-  get: (id: number) => api.get(`/invoices/${id}`).then(res => res.data),
-  getDetail: (id: number) => api.get(`/invoices/${id}`).then(res => res.data),
-  create: (data: any) => api.post('/invoices', data).then(res => res.data),
-  update: (id: number, data: any) => api.put(`/invoices/${id}`, data).then(res => res.data),
-  delete: (id: number) => api.delete(`/invoices/${id}`).then(res => res.data),
+    api.get('/invoices/', { params }).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  get: (id: number) => api.get(`/invoices/${id}`).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  getDetail: (id: number) => api.get(`/invoices/${id}`).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  create: (data: any) => api.post('/invoices/', data).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  update: (id: number, data: any) => api.put(`/invoices/${id}`, data).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  delete: (id: number) => api.delete(`/invoices/${id}`).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
 }
 
 export const returnService = {
-  list: (params?: { skip?: number; limit?: number }) =>
-    api.get('/returns', { params }).then(res => res.data),
-  get: (id: number) => api.get(`/returns/${id}`).then(res => res.data),
-  create: (data: any) => api.post('/returns', data).then(res => res.data),
+  list: (params?: {
+    skip?: number
+    limit?: number
+    reason_category?: string
+    is_partial?: boolean
+    date_from?: string
+    date_to?: string
+  }) =>
+    api.get('/returns/', { params }).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  get: (id: number) => api.get(`/returns/${id}`).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  create: (data: any) => api.post('/returns/', data).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
+  update: (id: number, data: any) => api.put(`/returns/${id}`, data).then(res => {
+      const response = res.data;
+      return (response && response.data) || response;
+    }),
 }
 
 export const ledgerService = {
   getCustomerLedger: (customerId: number, dateFrom?: string, dateTo?: string) =>
-    api.get(`/payments/customer/${customerId}/ledger`, { params: { date_from: dateFrom, date_to: dateTo } }).then(res => res.data),
+    api.get(`/payments/customer/${customerId}/ledger`, { params: { date_from: dateFrom, date_to: dateTo } }).then(res => {
+      const response = res.data;
+      return response && response.data || response;
+    }),
 
   getCustomerInvoicesLedger: (customerId: number, dateFrom?: string, dateTo?: string) =>
-    api.get(`/payments/customer/${customerId}/ledger/invoices`, { params: { date_from: dateFrom, date_to: dateTo } }).then(res => res.data),
+    api.get(`/payments/customer/${customerId}/ledger/invoices`, { params: { date_from: dateFrom, date_to: dateTo } }).then(res => {
+      const response = res.data;
+      return response.data || response;
+    }),
 
   getInvoiceAllocations: (invoiceId: number) =>
     api.get(`/payments/invoices/${invoiceId}/allocations`).then(res => res.data),
 
   getPayments: (customerId?: number, dateFrom?: string, dateTo?: string, skip?: number, limit?: number) =>
-    api.get('/payments', { params: { customerId, date_from: dateFrom, date_to: dateTo, skip, limit } }).then(res => res.data),
+    api.get('/payments/', { params: { customerId, date_from: dateFrom, date_to: dateTo, skip, limit } }).then(res => res.data),
 
   getPaymentDetails: (paymentId: number) =>
     api.get(`/payments/${paymentId}`).then(res => res.data),

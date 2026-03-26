@@ -7,6 +7,9 @@ class PaymentBase(BaseModel):
   customer_id: int
   date: datetime
   amount: float
+  payment_method: Optional[str] = "cash"
+  reference_number: Optional[str] = None
+  credit_balance: Optional[float] = None
   notes: Optional[str] = None
 
 
@@ -16,11 +19,8 @@ class PaymentCreate(PaymentBase):
 
 class PaymentUpdate(BaseModel):
   date: Optional[datetime] = None
-  notes: Optional[str] = None
-
-
-class PaymentUpdate(BaseModel):
-  date: Optional[datetime] = None
+  payment_method: Optional[str] = None
+  reference_number: Optional[str] = None
   notes: Optional[str] = None
 
 
@@ -50,6 +50,9 @@ class PaymentResponse(PaymentBase):
   customer_name: Optional[str] = None
   date: datetime
   amount: float
+  payment_method: Optional[str] = None
+  reference_number: Optional[str] = None
+  credit_balance: Optional[float] = None
   notes: Optional[str] = None
   created_at: datetime
   allocations: List[PaymentAllocationResponse] = []
@@ -59,6 +62,7 @@ class InvoiceLedgerResponse(BaseModel):
   id: int
   invoice_number: str
   invoice_date: datetime
+  due_date: Optional[datetime] = None
   grand_total: float
   amount_paid: float
   unpaid: float

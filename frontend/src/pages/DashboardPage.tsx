@@ -1,20 +1,28 @@
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
-import { customerService, supplierService, itemService, invoiceService } from '../services/api'
+import { itemService, invoiceService } from '../services/api'
+import api from '../services/api'
 
 function DashboardPage() {
   const navigate = useNavigate()
 
-  const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => customerService.list(),
+  // Count queries: use total_items from paginated response, not array length
+  const { data: customerCount } = useQuery<number>({
+    queryKey: ['customers-count'],
+    queryFn: () => api.get('/customers/?page_size=1').then(r => r.data.total_items as number),
   })
 
-  const { data: suppliers } = useQuery({
-    queryKey: ['suppliers'],
-    queryFn: () => supplierService.list(),
+  const { data: supplierCount } = useQuery<number>({
+    queryKey: ['suppliers-count'],
+    queryFn: () => api.get('/suppliers/?page_size=1').then(r => r.data.total_items as number),
   })
 
+  const { data: itemCount } = useQuery<number>({
+    queryKey: ['items-count'],
+    queryFn: () => api.get('/items/?page_size=1').then(r => r.data.total_items as number),
+  })
+
+  // Data queries for list display (services unwrap response.data to array)
   const { data: items } = useQuery({
     queryKey: ['items'],
     queryFn: () => itemService.list(),
@@ -42,7 +50,7 @@ function DashboardPage() {
                 <div className="w-3 h-3 rounded-full bg-amber-400 shadow-[0_0_10px_rgba(251,191,36,0.8)] animate-pulse-glow" />
               </div>
               <div className="text-5xl font-display font-bold gradient-text mb-2">
-                {customers?.length || 0}
+                {customerCount ?? 0}
               </div>
               <div className="text-lg text-slate-400 dark:text-slate-400 light:text-slate-600 font-medium">
                 Total Customers
@@ -62,7 +70,7 @@ function DashboardPage() {
                 <div className="w-3 h-3 rounded-full bg-indigo-400 shadow-[0_0_10px_rgba(129,140,248,0.8)] animate-pulse-glow" />
               </div>
               <div className="text-5xl font-display font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                {suppliers?.length || 0}
+                {supplierCount ?? 0}
               </div>
               <div className="text-lg text-slate-400 dark:text-slate-400 light:text-slate-600 font-medium">
                 Total Suppliers
@@ -82,7 +90,7 @@ function DashboardPage() {
                 <div className="w-3 h-3 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)] animate-pulse-glow" />
               </div>
               <div className="text-5xl font-display font-bold bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent mb-2">
-                {items?.length || 0}
+                {itemCount ?? 0}
               </div>
               <div className="text-lg text-slate-400 dark:text-slate-400 light:text-slate-600 font-medium">
                 Inventory Items
@@ -217,7 +225,7 @@ function DashboardPage() {
               <div>
                 <h3 className="text-lg font-semibold gradient-text">Getting Started</h3>
                 <p className="text-slate-400 dark:text-slate-400 light:text-slate-600 text-sm">
-                  {customers && customers.length === 0 && suppliers && suppliers.length === 0 && items && items.length === 0
+                  {customerCount === 0 && supplierCount === 0 && itemCount === 0
                     ? 'Welcome! Start by setting up your company profile, then add customers, suppliers, and inventory items.'
                     : 'Your dashboard is ready. Use the navigation menu to manage your business operations.'
                   }

@@ -204,7 +204,7 @@ function ItemsPage() {
           ) : items && items.length > 0 ? (
             <div className="card rounded-2xl overflow-hidden slide-up">
               <div className="overflow-x-auto">
-                <table className="min-w-[1400px] w-full">
+                <table className="min-w-[1400px] w-full table-fixed">
                 <thead>
                   <tr className="bg-gradient-to-r from-slate-800/50 to-transparent">
                     <th className="text-left px-8 py-6 font-display font-semibold text-slate-300">
@@ -213,7 +213,7 @@ function ItemsPage() {
                     <th className="text-left px-8 py-6 font-display font-semibold text-slate-300">
                       Brand
                     </th>
-                    <th className="text-left px-8 py-6 font-display font-semibold text-slate-300">
+                    <th className="text-left px-8 py-6 font-display font-semibold text-slate-300 w-64">
                       SKU
                     </th>
                     <th className="text-left px-8 py-6 font-display font-semibold text-slate-300">
@@ -251,8 +251,8 @@ function ItemsPage() {
                         </div>
                       </td>
                       <td className="px-8 py-6 text-slate-400 dark:text-slate-400 light:text-slate-600">{item.brand_name}</td>
-                      <td className="px-8 py-6 text-slate-400 dark:text-slate-400 light:text-slate-600">
-                        <span className="px-3 py-1 rounded-lg bg-slate-800/50 dark:bg-slate-800/50 light:bg-slate-200/50 border-2 border-slate-700/50 dark:border-slate-700/50 light:border-slate-200/50 text-sm">
+                      <td className="px-8 py-6 w-64 text-slate-400 dark:text-slate-400 light:text-slate-600">
+                        <span className="px-3 py-1 rounded-lg bg-slate-800/50 dark:bg-slate-800/50 light:bg-slate-200/50 border-2 border-slate-700/50 dark:border-slate-700/50 light:border-slate-200/50 text-sm block w-full truncate">
                           {item.sku || '-'}
                         </span>
                       </td>

@@ -9,6 +9,7 @@ import SalesInvoicesPage from './pages/SalesInvoicesPage'
 import LedgerPage from './pages/LedgerPage'
 import LedgerListPage from './pages/LedgerListPage'
 import InvoiceDetailPage from './pages/InvoiceDetailPage'
+import ReturnsListPage from './pages/ReturnsListPage'
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
         <Route path="/items" element={<ItemsPage />} />
         <Route path="/settings" element={<CompanyProfilePage />} />
         <Route path="/invoices" element={<SalesInvoicesPage />} />
+        <Route path="/returns" element={<ReturnsListPage />} />
       </Routes>
     </Layout>
   )

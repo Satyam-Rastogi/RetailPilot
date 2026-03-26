@@ -20,11 +20,15 @@ export default function LedgerPage() {
     customer_id: number
     date: string
     amount: number
+    payment_method: string
+    reference_number: string
     notes: string
   }>({
     customer_id: 0,
     date: new Date().toISOString().split('T')[0],
     amount: 0,
+    payment_method: 'cash',
+    reference_number: '',
     notes: ''
   })
   const [formError, setFormError] = useState('')
@@ -48,6 +52,8 @@ export default function LedgerPage() {
         customer_id: 0,
         date: new Date().toISOString().split('T')[0],
         amount: 0,
+        payment_method: 'cash',
+        reference_number: '',
         notes: ''
       })
       setFormError('')
@@ -91,6 +97,8 @@ export default function LedgerPage() {
       customer_id: Number(customerId),
       date: new Date().toISOString().split('T')[0],
       amount: 0,
+      payment_method: 'cash',
+      reference_number: '',
       notes: ''
     })
     setFormError('')
@@ -103,6 +111,8 @@ export default function LedgerPage() {
       customer_id: payment.customer_id,
       date: payment.date.split('T')[0],
       amount: payment.amount,
+      payment_method: payment.payment_method || 'cash',
+      reference_number: payment.reference_number || '',
       notes: payment.notes || ''
     })
     setFormError('')
@@ -131,11 +141,16 @@ export default function LedgerPage() {
         paymentId: editingPayment.id,
         data: {
           date: paymentForm.date,
+          payment_method: paymentForm.payment_method,
+          reference_number: paymentForm.reference_number || undefined,
           notes: paymentForm.notes
         }
       })
     } else {
-      createPaymentMutation.mutate(paymentForm)
+      createPaymentMutation.mutate({
+        ...paymentForm,
+        reference_number: paymentForm.reference_number || undefined,
+      })
     }
   }
 
@@ -145,23 +160,6 @@ export default function LedgerPage() {
     }
   }
 
-  useEffect(() => {
-    console.log('LedgerPage - customerId:', customerId)
-    console.log('LedgerPage - customers:', customers)
-    console.log('LedgerPage - customersError:', customersError)
-    console.log('LedgerPage - ledgerData:', ledgerData)
-    console.log('LedgerPage - isLoading:', isLoading)
-    console.log('LedgerPage - error:', error)
-  }, [customerId, customers, customersError, ledgerData, isLoading, error])
-
-  useEffect(() => {
-    console.log('LedgerPage - customerId:', customerId)
-    console.log('LedgerPage - customers:', customers)
-    console.log('LedgerPage - customersError:', customersError)
-    console.log('LedgerPage - ledgerData:', ledgerData)
-    console.log('LedgerPage - isLoading:', isLoading)
-    console.log('LedgerPage - error:', error)
-  }, [customerId, customers, customersError, ledgerData, isLoading, error])
 
   useEffect(() => {
     if (customers && customerId) {
@@ -379,6 +377,7 @@ export default function LedgerPage() {
                         <tr className="bg-gradient-to-r from-slate-800/50 to-transparent">
                           <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Invoice #</th>
                           <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Date</th>
+                          <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Due Date</th>
                           <th className="text-right px-8 py-4 font-display font-semibold text-slate-300">Total</th>
                           <th className="text-right px-8 py-4 font-display font-semibold text-slate-300">Paid</th>
                           <th className="text-right px-8 py-4 font-display font-semibold text-slate-300">Unpaid</th>
@@ -400,6 +399,22 @@ export default function LedgerPage() {
                               </button>
                             </td>
                             <td className="px-8 py-4 text-slate-400">{new Date(invoice.invoice_date).toLocaleDateString()}</td>
+                            <td className="px-8 py-4">
+                              {invoice.due_date ? (
+                                <span className={
+                                  invoice.payment_status !== 'Paid' && new Date(invoice.due_date) < new Date()
+                                    ? 'text-red-400 font-semibold'
+                                    : 'text-slate-400'
+                                }>
+                                  {new Date(invoice.due_date).toLocaleDateString()}
+                                  {invoice.payment_status !== 'Paid' && new Date(invoice.due_date) < new Date() && (
+                                    <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-red-500/20 border border-red-500/40">Overdue</span>
+                                  )}
+                                </span>
+                              ) : (
+                                <span className="text-slate-600">-</span>
+                              )}
+                            </td>
                             <td className="px-8 py-4 text-right text-slate-100">
                               {invoice.grand_total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </td>
@@ -443,6 +458,7 @@ export default function LedgerPage() {
                         <tr className="bg-gradient-to-r from-slate-800/50 to-transparent">
                           <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Date</th>
                           <th className="text-right px-8 py-4 font-display font-semibold text-slate-300">Amount</th>
+                          <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Method</th>
                           <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Notes</th>
                           <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Allocations</th>
                           <th className="text-left px-8 py-4 font-display font-semibold text-slate-300">Actions</th>
@@ -458,7 +474,28 @@ export default function LedgerPage() {
                             <td className="px-8 py-4 text-right text-green-400 font-semibold">
                               {payment.amount.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                             </td>
-                            <td className="px-8 py-4 text-slate-400">{payment.notes || '-'}</td>
+                            <td className="px-8 py-4">
+                              {payment.payment_method ? (
+                                <div>
+                                  <span className="inline-flex items-center px-2 py-1 rounded text-xs font-semibold bg-slate-700/50 text-slate-300 uppercase tracking-wide">
+                                    {payment.payment_method.replace('_', ' ')}
+                                  </span>
+                                  {payment.reference_number && (
+                                    <div className="text-xs text-slate-500 mt-1">{payment.reference_number}</div>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-slate-500">-</span>
+                              )}
+                            </td>
+                            <td className="px-8 py-4">
+                              {payment.credit_balance != null && payment.credit_balance > 0 && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-indigo-500/20 border border-indigo-500/40 text-indigo-300 mr-2">
+                                  Credit: ₹{payment.credit_balance.toFixed(2)}
+                                </span>
+                              )}
+                              <span className="text-slate-400">{payment.notes || (payment.credit_balance ? '' : '-')}</span>
+                            </td>
                             <td className="px-8 py-4">
                               {payment.allocations.length > 0 ? (
                                 <div className="flex flex-wrap gap-2">
@@ -551,6 +588,34 @@ export default function LedgerPage() {
                       required
                     />
                   </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-slate-300">Payment Method *</label>
+                    <select
+                      value={paymentForm.payment_method}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, payment_method: e.target.value })}
+                      className="input"
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="upi">UPI</option>
+                      <option value="cheque">Cheque</option>
+                      <option value="bank_transfer">Bank Transfer</option>
+                      <option value="card">Card</option>
+                    </select>
+                  </div>
+                  {(paymentForm.payment_method === 'upi' || paymentForm.payment_method === 'cheque' || paymentForm.payment_method === 'bank_transfer') && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-semibold mb-2 text-slate-300">
+                        {paymentForm.payment_method === 'cheque' ? 'Cheque Number' : paymentForm.payment_method === 'upi' ? 'UPI Reference' : 'Transaction ID'}
+                      </label>
+                      <input
+                        type="text"
+                        value={paymentForm.reference_number || ''}
+                        onChange={(e) => setPaymentForm({ ...paymentForm, reference_number: e.target.value })}
+                        className="input"
+                        placeholder="Optional reference number"
+                      />
+                    </div>
+                  )}
                   <div className="mb-6">
                     <label className="block text-sm font-semibold mb-2 text-slate-300">Notes</label>
                     <textarea
@@ -614,6 +679,34 @@ export default function LedgerPage() {
                       required
                     />
                   </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-semibold mb-2 text-slate-300">Payment Method</label>
+                    <select
+                      value={paymentForm.payment_method}
+                      onChange={(e) => setPaymentForm({ ...paymentForm, payment_method: e.target.value })}
+                      className="input"
+                    >
+                      <option value="cash">Cash</option>
+                      <option value="upi">UPI</option>
+                      <option value="cheque">Cheque</option>
+                      <option value="bank_transfer">Bank Transfer</option>
+                      <option value="card">Card</option>
+                    </select>
+                  </div>
+                  {(paymentForm.payment_method === 'upi' || paymentForm.payment_method === 'cheque' || paymentForm.payment_method === 'bank_transfer') && (
+                    <div className="mb-4">
+                      <label className="block text-sm font-semibold mb-2 text-slate-300">
+                        {paymentForm.payment_method === 'cheque' ? 'Cheque Number' : paymentForm.payment_method === 'upi' ? 'UPI Reference' : 'Transaction ID'}
+                      </label>
+                      <input
+                        type="text"
+                        value={paymentForm.reference_number || ''}
+                        onChange={(e) => setPaymentForm({ ...paymentForm, reference_number: e.target.value })}
+                        className="input"
+                        placeholder="Optional reference number"
+                      />
+                    </div>
+                  )}
                   <div className="mb-6">
                     <label className="block text-sm font-semibold mb-2 text-slate-300">Notes</label>
                     <textarea
