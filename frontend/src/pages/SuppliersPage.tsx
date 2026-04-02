@@ -1,12 +1,22 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
+import { useModalKeyboard } from '../hooks/useModalKeyboard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Plus, Pencil, Trash2, X } from 'lucide-react'
 import { supplierService } from '../services/api'
-import type { Supplier, SupplierListResponse } from '../types/api'
+import type { Supplier, SupplierListResponse, PaginatedResponse } from '../types/api'
+import Pagination from '../components/Pagination'
+import { MagneticButton } from '../components/MagneticButton'
+
+const PAGE_SIZE = 20
 
 function SuppliersPage() {
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const [showModal, setShowModal] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
+  useModalKeyboard(showModal, () => setShowModal(false), modalRef)
   const [formData, setFormData] = useState({
     name: '',
     contact_person: '',
@@ -21,9 +31,11 @@ function SuppliersPage() {
 
   const queryClient = useQueryClient()
 
-  const { data: suppliers, isLoading } = useQuery<SupplierListResponse[]>({
-    queryKey: ['suppliers', search],
-    queryFn: () => supplierService.list({ search: search || undefined }),
+  useEffect(() => { setPage(1) }, [search])
+
+  const { data: suppliers, isLoading } = useQuery<PaginatedResponse<SupplierListResponse>>({
+    queryKey: ['suppliers', search, page],
+    queryFn: () => supplierService.list({ search: search || undefined, page, page_size: PAGE_SIZE }),
   })
 
   const createMutation = useMutation({
@@ -75,18 +87,19 @@ function SuppliersPage() {
     }
   }
 
-  const handleEdit = (supplier: Supplier) => {
-    setEditingSupplier(supplier)
+  const handleEdit = async (supplier: SupplierListResponse) => {
+    const fullSupplier: Supplier = await supplierService.get(supplier.id)
+    setEditingSupplier(fullSupplier)
     setFormData({
-      name: supplier.name,
-      contact_person: supplier.contact_person || '',
-      phone_number: supplier.phone_number || '',
-      address: supplier.address || '',
-      gstin: supplier.gstin || '',
-      supplier_bank_name: supplier.supplier_bank_name || '',
-      supplier_bank_account_number: supplier.supplier_bank_account_number || '',
-      supplier_bank_ifsc_code: supplier.supplier_bank_ifsc_code || '',
-      notes: supplier.notes || '',
+      name: fullSupplier.name,
+      contact_person: fullSupplier.contact_person || '',
+      phone_number: fullSupplier.phone_number || '',
+      address: fullSupplier.address || '',
+      gstin: fullSupplier.gstin || '',
+      supplier_bank_name: fullSupplier.supplier_bank_name || '',
+      supplier_bank_account_number: fullSupplier.supplier_bank_account_number || '',
+      supplier_bank_ifsc_code: fullSupplier.supplier_bank_ifsc_code || '',
+      notes: fullSupplier.notes || '',
     })
     setShowModal(true)
   }
@@ -97,299 +110,280 @@ function SuppliersPage() {
     }
   }
 
+  const rows = suppliers?.data ?? []
+
   return (
-    <div className="page-container fade-in">
-      <div className="section">
-        <div className="section-inner">
-          <header className="mb-12 slide-up">
-            <div className="flex items-center gap-4 mb-4">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-[0_0_30px_rgba(99,102,241,0.4)] float">
-                <span className="text-3xl">🏢</span>
-              </div>
-              <div>
-                <h1 className="text-5xl font-display font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent mb-2">
-                  Suppliers
-                </h1>
-                <p className="text-xl text-slate-400 font-medium">
-                  Manage your supplier database
-                </p>
-              </div>
-            </div>
+    <div className="space-y-8 pb-12">
+      {/* Page Header */}
+      <header className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-line pb-6">
+        <div>
+          <h1 className="text-5xl md:text-7xl font-display font-bold tracking-tighter uppercase">Suppliers</h1>
+          <p className="text-ink-light font-mono text-xs uppercase tracking-widest mt-2">
+            {suppliers?.total_items ?? 0} total
+          </p>
+        </div>
+        <MagneticButton strength={0.5}>
+          <button
+            onClick={() => { resetForm(); setShowModal(true) }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
+          >
+            <Plus className="w-4 h-4" /> Add Supplier
+          </button>
+        </MagneticButton>
+      </header>
 
-            <div className="flex gap-4">
-              <div className="flex-1">
-                <input
-                  type="text"
-                  placeholder="Search suppliers by name..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="input"
-                />
-              </div>
-              <button
-                onClick={() => { resetForm(); setShowModal(true) }}
-                className="btn btn-primary px-8 flex items-center gap-2"
-              >
-                <span className="text-xl">➕</span>
-                Add Supplier
-              </button>
-            </div>
-          </header>
+      {/* Search */}
+      <div className="relative">
+        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-light font-mono text-xs">//</span>
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full pl-8 pr-4 py-2.5 brutal-border bg-surface text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+          placeholder="SEARCH SUPPLIERS..."
+        />
+      </div>
 
-          {isLoading ? (
-            <div className="text-center py-24 slide-up">
-              <div className="text-6xl mb-4 animate-bounce">⏳</div>
-              <p className="text-xl text-slate-400">Loading suppliers...</p>
-            </div>
-          ) : suppliers && suppliers.length > 0 ? (
-            <div className="card rounded-2xl overflow-hidden slide-up">
-              <div className="overflow-x-auto">
-                <table className="min-w-[1000px] w-full">
-                <thead>
-                  <tr className="bg-gradient-to-r from-slate-800/50 to-transparent">
-                    <th className="text-left px-8 py-6 font-display font-semibold text-slate-300">
-                      Supplier Name
-                    </th>
-                    <th className="text-left px-8 py-6 font-display font-semibold text-slate-300">
-                      Phone Number
-                    </th>
-                    <th className="text-left px-8 py-6 font-display font-semibold text-slate-300">
-                      GSTIN
-                    </th>
-                    <th className="text-right px-8 py-6 font-display font-semibold text-slate-300">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {suppliers.map((supplier: SupplierListResponse, index: number) => (
-                    <tr 
-                      key={supplier.id} 
-                      className="border-b-2 border-slate-800/30 hover:bg-slate-800/30 transition-all duration-300 group"
-                      style={{ animationDelay: `${index * 50}ms` }}
-                    >
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/20 to-indigo-500/5 flex items-center justify-center">
-                            <span className="text-lg">{supplier.name.charAt(0).toUpperCase()}</span>
-                          </div>
-                          <span className="font-semibold text-slate-100 group-hover:text-indigo-400 transition-colors">
-                            {supplier.name}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-8 py-6 text-slate-400">
-                        {supplier.phone_number || '-'}
-                      </td>
-                      <td className="px-8 py-6 text-slate-400">
-                        {supplier.gstin || '-'}
-                      </td>
-                      <td className="px-8 py-6 text-right space-x-3">
-                        <button
-                          onClick={() => handleEdit(supplier as any)}
-                          className="px-4 py-2 rounded-lg bg-slate-800/50 hover:bg-indigo-500/20 border-2 border-slate-700/50 hover:border-indigo-500/50 text-indigo-400 hover:text-indigo-300 font-semibold transition-all duration-300 hover:scale-105"
-                        >
-                          Edit
-                        </button>
-                        <button
-                          onClick={() => handleDelete(supplier.id, supplier.name)}
-                          className="px-4 py-2 rounded-lg bg-slate-800/50 hover:bg-red-500/20 border-2 border-slate-700/50 hover:border-red-500/50 text-red-400 hover:text-red-300 font-semibold transition-all duration-300 hover:scale-105"
-                        >
-                          Delete
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-24 slide-up card p-16 rounded-2xl">
-              <div className="text-8xl mb-6">🏢</div>
-              <h3 className="text-2xl font-display font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent mb-3">
-                No suppliers found
-              </h3>
-              <p className="text-slate-400 text-lg mb-6">
-                Add your first supplier to get started
-              </p>
-              <button
-                onClick={() => { resetForm(); setShowModal(true) }}
-                className="btn btn-primary px-8"
-              >
-                Add First Supplier
-              </button>
-            </div>
-          )}
-
-          {showModal && (
-            <div className="fixed inset-0 bg-slate-950/90 backdrop-blur-sm flex items-center justify-center z-50 fade-in">
-              <div className="card card-dark p-10 rounded-3xl max-w-2xl w-full mx-4 scale-in overflow-y-auto max-h-[90vh] shadow-[0_0_60px_rgba(0,0,0,0.6)]">
-                <div className="flex items-center justify-between mb-8">
-                  <h2 className="text-3xl font-display font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
-                    {editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}
-                  </h2>
-                  <button
-                    onClick={() => setShowModal(false)}
-                    className="w-10 h-10 rounded-lg bg-slate-800/50 hover:bg-red-500/20 border-2 border-slate-700/50 hover:border-red-500/50 text-slate-400 hover:text-red-400 flex items-center justify-center transition-all duration-300"
-                  >
-                    ✕
-                  </button>
-                </div>
-
-                <form onSubmit={handleSubmit} className="space-y-5">
-                  <div>
-                    <label className="block text-sm font-semibold mb-3 text-slate-300">
-                      Supplier Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="input"
-                      placeholder="Enter supplier name"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-5">
-                    <div>
-                      <label className="block text-sm font-semibold mb-3 text-slate-300">
-                        Contact Person
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.contact_person}
-                        onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
-                        className="input"
-                        placeholder="Contact person name"
-                      />
+      {/* Table / States */}
+      {isLoading ? (
+        <div className="brutal-border bg-surface p-16 text-center">
+          <p className="font-mono text-sm uppercase tracking-widest text-ink-light">Loading...</p>
+        </div>
+      ) : rows.length > 0 ? (
+        <div className="brutal-border bg-surface overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-surface text-ink-light border-b border-line">
+                <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">Name</th>
+                <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">Phone</th>
+                <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">GSTIN</th>
+                <th className="px-4 py-3 text-right text-[10px] font-mono uppercase tracking-widest">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-line">
+              {rows.map((supplier: SupplierListResponse) => (
+                <tr key={supplier.id} className="hover:bg-ink hover:text-surface transition-colors group">
+                  <td className="px-4 py-3 font-mono text-sm font-medium">{supplier.name}</td>
+                  <td className="px-4 py-3 font-mono text-sm text-ink-light group-hover:text-surface">
+                    {supplier.phone_number || <span className="opacity-40">—</span>}
+                  </td>
+                  <td className="px-4 py-3 font-mono text-sm text-ink-light group-hover:text-surface">
+                    {supplier.gstin || <span className="opacity-40">—</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-2 justify-end">
+                      <button
+                        onClick={() => handleEdit(supplier)}
+                        className="p-1.5 brutal-border hover:bg-accent hover:text-on-accent hover:border-accent transition-colors brutal-focus"
+                        title="Edit"
+                      >
+                        <Pencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => handleDelete(supplier.id, supplier.name)}
+                        className="p-1.5 brutal-border hover:bg-danger hover:text-paper hover:border-danger transition-colors brutal-focus"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-
-                    <div>
-                      <label className="block text-sm font-semibold mb-3 text-slate-300">
-                        Phone Number
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.phone_number}
-                        onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
-                        className="input"
-                        placeholder="+1 234 567 8900"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-3 text-slate-300">
-                      Address
-                    </label>
-                    <textarea
-                      value={formData.address}
-                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                      className="input resize-none"
-                      rows={3}
-                      placeholder="Enter supplier address"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-3 text-slate-300">
-                      GSTIN
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.gstin}
-                      onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
-                      className="input"
-                      placeholder="Enter GSTIN number"
-                    />
-                  </div>
-
-                  <div className="border-2 border-slate-700/50 rounded-xl p-5 bg-slate-800/30">
-                    <h4 className="font-semibold text-slate-300 mb-4 flex items-center gap-2">
-                      <span className="text-xl">🏦</span>
-                      Bank Details
-                    </h4>
-                    <div className="space-y-4">
-                      <div>
-                        <label className="block text-sm font-semibold mb-2 text-slate-400">
-                          Bank Name
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.supplier_bank_name}
-                          onChange={(e) => setFormData({ ...formData, supplier_bank_name: e.target.value })}
-                          className="input"
-                          placeholder="Bank name"
-                        />
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-semibold mb-2 text-slate-400">
-                            Account Number
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.supplier_bank_account_number}
-                            onChange={(e) => setFormData({ ...formData, supplier_bank_account_number: e.target.value })}
-                            className="input"
-                            placeholder="Account number"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-semibold mb-2 text-slate-400">
-                            IFSC Code
-                          </label>
-                          <input
-                            type="text"
-                            value={formData.supplier_bank_ifsc_code}
-                            onChange={(e) => setFormData({ ...formData, supplier_bank_ifsc_code: e.target.value })}
-                            className="input"
-                            placeholder="IFSC code"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-semibold mb-3 text-slate-300">
-                      Notes
-                    </label>
-                    <textarea
-                      value={formData.notes}
-                      onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                      className="input resize-none"
-                      rows={3}
-                      placeholder="Additional notes about this supplier"
-                    />
-                  </div>
-
-                  <div className="flex gap-4 pt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowModal(false)}
-                      className="btn btn-secondary flex-1"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={createMutation.isPending || updateMutation.isPending}
-                      className="btn btn-primary flex-1"
-                    >
-                      {createMutation.isPending || updateMutation.isPending ? 'Saving...' : 'Save Supplier'}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <Pagination
+            currentPage={page}
+            totalPages={suppliers?.total_pages ?? 1}
+            totalItems={suppliers?.total_items ?? 0}
+            pageSize={PAGE_SIZE}
+            onPageChange={setPage}
+          />
+        </div>
+      ) : (
+        <div className="brutal-border bg-surface p-16 text-center">
+          <p className="font-mono text-sm uppercase tracking-widest text-ink-light mb-1">No suppliers found</p>
+          <p className="font-mono text-xs text-ink-light opacity-60">
+            {search ? 'No suppliers match your search' : 'Add your first supplier to get started'}
+          </p>
+          {!search && (
+            <button
+              onClick={() => { resetForm(); setShowModal(true) }}
+              className="mt-6 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
+            >
+              Add Supplier
+            </button>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Modal */}
+      {showModal && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-ink/20 backdrop-blur-md" onClick={e => { if (e.target === e.currentTarget) setShowModal(false) }}>
+          <div ref={modalRef} className="brutal-border bg-surface w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-line bg-ink text-surface shrink-0">
+              <h2 className="font-display font-bold text-xl uppercase tracking-tighter">
+                {editingSupplier ? 'Edit Supplier' : 'Add New Supplier'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="p-2 hover:bg-danger hover:text-paper transition-colors brutal-focus"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <form id="supplier-form" onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                  Supplier Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                  placeholder="Enter supplier name"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                    Contact Person
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.contact_person}
+                    onChange={(e) => setFormData({ ...formData, contact_person: e.target.value })}
+                    className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                    placeholder="Contact person name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                    Phone Number
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.phone_number}
+                    onChange={(e) => setFormData({ ...formData, phone_number: e.target.value })}
+                    className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                    placeholder="+1 234 567 8900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                  Address
+                </label>
+                <textarea
+                  value={formData.address}
+                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                  className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors resize-none"
+                  rows={3}
+                  placeholder="Enter supplier address"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                  GSTIN
+                </label>
+                <input
+                  type="text"
+                  value={formData.gstin}
+                  onChange={(e) => setFormData({ ...formData, gstin: e.target.value })}
+                  className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                  placeholder="Enter GSTIN number"
+                />
+              </div>
+
+              {/* Bank Details Section */}
+              <div className="brutal-border bg-paper p-4 space-y-4">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-ink-light">Bank Details</p>
+
+                <div>
+                  <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                    Bank Name
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.supplier_bank_name}
+                    onChange={(e) => setFormData({ ...formData, supplier_bank_name: e.target.value })}
+                    className="w-full px-3 py-2.5 brutal-border bg-surface text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                    placeholder="Bank name"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                      Account Number
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.supplier_bank_account_number}
+                      onChange={(e) => setFormData({ ...formData, supplier_bank_account_number: e.target.value })}
+                      className="w-full px-3 py-2.5 brutal-border bg-surface text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                      placeholder="Account number"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                      IFSC Code
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.supplier_bank_ifsc_code}
+                      onChange={(e) => setFormData({ ...formData, supplier_bank_ifsc_code: e.target.value })}
+                      className="w-full px-3 py-2.5 brutal-border bg-surface text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                      placeholder="IFSC code"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                  Notes
+                </label>
+                <textarea
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors resize-none"
+                  rows={3}
+                  placeholder="Additional notes about this supplier"
+                />
+              </div>
+            </form>
+
+            {/* Footer */}
+            <div className="border-t border-line p-5 flex gap-3 justify-end bg-paper shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowModal(false)}
+                className="px-5 py-2.5 brutal-border font-mono text-sm uppercase tracking-wider hover:border-accent hover:text-accent transition-colors brutal-focus"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="supplier-form"
+                disabled={createMutation.isPending || updateMutation.isPending}
+                className="px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all disabled:opacity-50"
+              >
+                {createMutation.isPending || updateMutation.isPending ? 'Saving...' : 'Save Supplier'}
+              </button>
+            </div>
+          </div>
+        </div>
+      , document.body)}
     </div>
   )
 }

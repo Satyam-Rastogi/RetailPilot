@@ -1,4 +1,5 @@
-from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime
+from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, text
+from sqlalchemy.orm import relationship
 from app.db.session import Base
 from datetime import datetime
 
@@ -18,5 +19,17 @@ class ItemModel(Base):
   unit_of_measurement = Column(String(20), nullable=False, default="Pcs")
   low_stock_threshold = Column(Integer, nullable=True)
   enable_low_stock_alert = Column(Boolean, nullable=False, default=False)
+  has_variants = Column(Boolean, nullable=False, default=False)
+  variant_type = Column(String(50), nullable=True)   # e.g. "Size", "Color", "Style"
+  hsn_sac_code = Column(String(30), nullable=True)
+  gst_rate = Column(Float, nullable=True)   # e.g. 0, 5, 12, 18, 28 (percent)
+  is_active = Column(Boolean, nullable=False, default=True, server_default=text('1'))
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
   updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+
+  variants = relationship(
+    "ItemVariantModel",
+    back_populates="item",
+    cascade="all, delete-orphan",
+    order_by="ItemVariantModel.id",
+  )

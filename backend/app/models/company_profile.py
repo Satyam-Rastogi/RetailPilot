@@ -16,5 +16,6 @@ class CompanyProfileModel(Base):
   receiver_bank_name = Column(String(255), nullable=True)
   receiver_account_number = Column(String(50), nullable=True)
   receiver_ifsc_code = Column(String(20), nullable=True)
+  upi_id = Column(String(100), nullable=True)
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
   updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)

@@ -1,10 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 from app.db.session import get_db
 from app.models.return_receipt import ReturnReceiptModel, ReturnLineItemModel
-from app.models.invoice import InvoiceModel
+from app.models.invoice import InvoiceModel, InvoiceLineItemModel, PaymentStatus
+from app.models.customer import CustomerModel
+from app.models.payment import PaymentModel, PaymentAllocationModel
 from app.models.item import ItemModel
 from app.models.stock_audit import StockAuditModel
 from app.schemas.return_receipt import (
@@ -54,15 +57,24 @@ def get_returns(
                 primary_category = li.reason_category.value
                 break
 
+        # Resolve customer name — either via invoice or direct customer FK
+        customer_name = None
+        if ret.invoice and ret.invoice.customer:
+            customer_name = ret.invoice.customer.name
+        elif ret.customer:
+            customer_name = ret.customer.name
+
         result.append({
             'id': ret.id,
             'invoice_id': ret.invoice_id,
+            'customer_id': ret.customer_id,
             'invoice_number': ret.invoice.invoice_number if ret.invoice else None,
-            'customer_name': ret.invoice.customer.name if ret.invoice and ret.invoice.customer else None,
+            'customer_name': customer_name,
             'invoice_date': ret.invoice.invoice_date.isoformat() if ret.invoice else None,
             'return_date': ret.return_date.isoformat(),
             'total_credit': ret.total_credit,
             'is_partial': ret.is_partial,
+            'is_gr': ret.invoice_id is None,
             'total_items_in_invoice': ret.total_items_in_invoice,
             'items_returned_count': ret.items_returned_count,
             'reason_category': primary_category,
@@ -136,15 +148,56 @@ def get_return(return_id: int, db: Session = Depends(get_db)):
 
 @router.post("/", response_model=dict)
 def create_return(return_data: ReturnReceiptCreate, db: Session = Depends(get_db)):
-    invoice = db.query(InvoiceModel).filter(InvoiceModel.id == return_data.invoice_id).first()
+    # ── Validate and resolve customer/invoice ─────────────────────────────────
+    invoice = None
+    customer_id = None
 
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Invoice not found")
+    if return_data.invoice_id:
+        invoice = db.query(InvoiceModel).filter(InvoiceModel.id == return_data.invoice_id).first()
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Invoice not found")
+        customer_id = invoice.customer_id
+    elif return_data.customer_id:
+        customer = db.query(CustomerModel).filter(CustomerModel.id == return_data.customer_id).first()
+        if not customer:
+            raise HTTPException(status_code=404, detail="Customer not found")
+        customer_id = return_data.customer_id
+    else:
+        raise HTTPException(status_code=400, detail="Either invoice_id or customer_id is required")
 
     total_credit = sum(item.amount for item in return_data.line_items)
 
+    # ── P1-1: Validate return quantities against original invoice ─────────────
+    if invoice:
+        for item_data in return_data.line_items:
+            orig = db.query(InvoiceLineItemModel).filter(
+                InvoiceLineItemModel.invoice_id == invoice.id,
+                InvoiceLineItemModel.item_id == item_data.item_id,
+            ).first()
+            if not orig:
+                db_item_name = db.query(ItemModel.item_name).filter(ItemModel.id == item_data.item_id).scalar() or str(item_data.item_id)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Item '{db_item_name}' was not on invoice {invoice.invoice_number}"
+                )
+            already_returned = db.query(func.sum(ReturnLineItemModel.quantity_returned)).filter(
+                ReturnLineItemModel.item_id == item_data.item_id,
+                ReturnLineItemModel.return_receipt_id.in_(
+                    db.query(ReturnReceiptModel.id).filter(ReturnReceiptModel.invoice_id == invoice.id)
+                )
+            ).scalar() or 0
+            available = orig.quantity - already_returned
+            if item_data.quantity_returned > available:
+                db_item_name = db.query(ItemModel.item_name).filter(ItemModel.id == item_data.item_id).scalar() or str(item_data.item_id)
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Cannot return {item_data.quantity_returned} of '{db_item_name}': "
+                           f"only {available} returnable (sold {orig.quantity}, already returned {already_returned})"
+                )
+
     db_return = ReturnReceiptModel(
         invoice_id=return_data.invoice_id,
+        customer_id=customer_id,
         return_date=return_data.return_date,
         total_credit=total_credit,
         notes=return_data.notes,
@@ -155,16 +208,14 @@ def create_return(return_data: ReturnReceiptCreate, db: Session = Depends(get_db
     db.add(db_return)
     db.flush()
 
+    audit_ref = f"Invoice #{invoice.invoice_number}" if invoice else f"GR #{db_return.id}"
+
     for item_data in return_data.line_items:
         db_item = db.query(ItemModel).filter(ItemModel.id == item_data.item_id).first()
 
         if not db_item:
             raise HTTPException(status_code=404, detail=f"Item with id {item_data.item_id} not found")
 
-        if db_item.current_stock_quantity < item_data.quantity_returned:
-            raise HTTPException(status_code=400, detail=f"Cannot return {item_data.quantity_returned} items. Only {db_item.current_stock_quantity} available.")
-
-        quantity_before = db_item.current_stock_quantity
         db_item.current_stock_quantity += item_data.quantity_returned
 
         return_line = ReturnLineItemModel(
@@ -178,24 +229,81 @@ def create_return(return_data: ReturnReceiptCreate, db: Session = Depends(get_db
         db.add(return_line)
         db.flush()
 
-        stock_audit = StockAuditModel(
+        db.add(StockAuditModel(
             item_id=item_data.item_id,
             delta=item_data.quantity_returned,
             delta_after=db_item.current_stock_quantity,
-            reason=f"Return - Invoice #{invoice.invoice_number}",
+            reason=f"Return - {audit_ref}",
+        ))
+
+    # ── For standalone GRs: create a credit_note payment entry ───────────────
+    if not return_data.invoice_id:
+        db.add(PaymentModel(
+            customer_id=customer_id,
+            date=return_data.return_date,
+            amount=total_credit,
+            payment_method="credit_note",
+            credit_balance=total_credit,
+            notes=f"GR Credit Note — Return #{db_return.id}",
+        ))
+
+    # ── P1-4: For invoice-linked returns: credit note + FIFO allocation ───────
+    if return_data.invoice_id and total_credit > 0:
+        credit_payment = PaymentModel(
+            customer_id=customer_id,
+            date=return_data.return_date,
+            amount=total_credit,
+            payment_method="credit_note",
+            notes=f"Credit Note — {invoice.invoice_number}",
         )
-        db.add(stock_audit)
+        db.add(credit_payment)
+        db.flush()
+
+        unpaid_invoices = db.query(InvoiceModel).filter(
+            InvoiceModel.customer_id == customer_id,
+            InvoiceModel.grand_total > InvoiceModel.amount_paid,
+        ).order_by(InvoiceModel.invoice_date.asc()).all()
+
+        remaining = total_credit
+        for inv in unpaid_invoices:
+            if remaining <= 0:
+                break
+            due = inv.grand_total - inv.amount_paid
+            alloc = min(due, remaining)
+            db.add(PaymentAllocationModel(
+                payment_id=credit_payment.id,
+                invoice_id=inv.id,
+                allocated_amount=alloc,
+            ))
+            inv.amount_paid += alloc
+            remaining -= alloc
+            if inv.amount_paid >= inv.grand_total:
+                inv.payment_status = PaymentStatus.PAID
+            else:
+                inv.payment_status = PaymentStatus.PARTIALLY_PAID
+
+        if remaining > 0:
+            credit_payment.credit_balance = remaining
 
     db.commit()
     db.refresh(db_return)
 
+    customer_name = None
+    if db_return.invoice and db_return.invoice.customer:
+        customer_name = db_return.invoice.customer.name
+    elif db_return.customer:
+        customer_name = db_return.customer.name
+
     return {
         'id': db_return.id,
         'invoice_id': db_return.invoice_id,
+        'customer_id': db_return.customer_id,
         'invoice_number': db_return.invoice.invoice_number if db_return.invoice else None,
+        'customer_name': customer_name,
         'invoice_date': db_return.invoice.invoice_date.isoformat() if db_return.invoice else None,
         'total_credit': db_return.total_credit,
         'is_partial': db_return.is_partial,
+        'is_gr': db_return.invoice_id is None,
         'notes': db_return.notes,
         'created_at': db_return.created_at.isoformat(),
     }

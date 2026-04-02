@@ -1,3 +1,13 @@
+export interface PaginatedResponse<T> {
+  data: T[]
+  total_items: number
+  total_pages: number
+  current_page: number
+  page_size: number
+  has_next: boolean
+  has_previous: boolean
+}
+
 export interface StockAdjust {
   delta: number
   reason?: string
@@ -14,6 +24,7 @@ export interface CompanyProfile {
   receiver_bank_name?: string
   receiver_account_number?: string
   receiver_ifsc_code?: string
+  upi_id?: string
   created_at: string
   updated_at?: string
 }
@@ -68,6 +79,15 @@ export interface SupplierListResponse {
   gstin?: string
 }
 
+export interface ItemVariant {
+  id: number
+  item_id: number
+  variant_value: string
+  sku?: string
+  stock_quantity: number
+  created_at: string
+}
+
 export interface ItemBase {
   item_name: string
   brand_name: string
@@ -80,12 +100,17 @@ export interface ItemBase {
   unit_of_measurement?: string
   low_stock_threshold?: number
   enable_low_stock_alert?: boolean
+  has_variants?: boolean
+  variant_type?: string
+  hsn_sac_code?: string
+  gst_rate?: number
 }
 
 export interface Item extends ItemBase {
   id: number
   created_at: string
   updated_at?: string
+  variants?: ItemVariant[]
 }
 
 export interface ItemListResponse {
@@ -93,13 +118,19 @@ export interface ItemListResponse {
   item_name: string
   brand_name: string
   sku?: string
+  unit_of_measurement?: string
   current_stock_quantity: number
   selling_price_retail: number
   selling_price_wholesale: number
   enable_low_stock_alert: boolean
   low_stock_threshold?: number
+  has_variants?: boolean
+  variant_type?: string
+  hsn_sac_code?: string
+  gst_rate?: number
+  variants_count?: number
+  variants?: ItemVariant[]
   is_low_stock?: boolean
-  unit_of_measurement?: string
 }
 
 export interface InvoiceLineItem {
@@ -110,6 +141,8 @@ export interface InvoiceLineItem {
   discount_amount?: number
   discount_type?: 'amount' | 'percent'
   total: number
+  gst_rate?: number
+  hsn_sac_code?: string
 }
 
 export interface InlineCustomer {
@@ -163,6 +196,7 @@ export interface InvoiceListResponse {
   invoice_date: string
   due_date?: string
   total_amount: number
+  amount_paid?: number
   payment_status: string
 }
 
@@ -187,8 +221,9 @@ export interface StockAuditEntry {
   id: number
   item_id: number
   item_name?: string
-  quantity_change: number
-  reason: string
+  delta: number
+  delta_after: number
+  reason?: string
   created_at: string
 }
 

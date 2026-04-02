@@ -4,36 +4,31 @@ type Theme = 'dark' | 'light'
 
 interface ThemeContextType {
   theme: Theme
+  setTheme: (theme: Theme) => void
   toggleTheme: () => void
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem('theme') as Theme
+  const [theme, setThemeState] = useState<Theme>(() => {
+    const saved = localStorage.getItem('retail-pilot-theme') as Theme
     if (saved === 'light' || saved === 'dark') return saved
     return 'dark'
   })
 
   useEffect(() => {
     const root = document.documentElement
-    if (theme === 'dark') {
-      root.classList.remove('light')
-      root.classList.add('dark')
-    } else {
-      root.classList.remove('dark')
-      root.classList.add('light')
-    }
-    localStorage.setItem('theme', theme)
+    root.classList.remove('dark', 'light')
+    root.classList.add(theme)
+    localStorage.setItem('retail-pilot-theme', theme)
   }, [theme])
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'dark' ? 'light' : 'dark')
-  }
+  const setTheme = (t: Theme) => setThemeState(t)
+  const toggleTheme = () => setThemeState(prev => prev === 'dark' ? 'light' : 'dark')
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, setTheme, toggleTheme }}>
       {children}
     </ThemeContext.Provider>
   )
@@ -41,8 +36,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
 export function useTheme() {
   const context = useContext(ThemeContext)
-  if (context === undefined) {
-    throw new Error('useTheme must be used within a ThemeProvider')
-  }
+  if (context === undefined) throw new Error('useTheme must be used within a ThemeProvider')
   return context
 }

@@ -34,14 +34,16 @@ def generate_invoice_number(year: int, sequence: int, customer_type: str) -> str
 @router.get("/", response_model=PaginatedResponse[dict])
 def get_invoices(
   skip: int = Query(0, ge=0),
-  limit: int = Query(100, ge=1, le=100),
+  limit: int = Query(100, ge=1, le=500),
   page: int = Query(1, ge=1),
-  page_size: int = Query(100, ge=1, le=100),
+  page_size: int = Query(100, ge=1, le=500),
   date_from: Optional[str] = Query(None, description="Filter invoices from this date (YYYY-MM-DD)"),
   date_to: Optional[str] = Query(None, description="Filter invoices up to this date (YYYY-MM-DD)"),
   customer_id: Optional[int] = Query(None, description="Filter by customer ID"),
   customer_name: Optional[str] = Query(None, description="Search by customer name (partial match)"),
   invoice_number: Optional[str] = Query(None, description="Search by invoice number (partial match)"),
+  payment_status: Optional[str] = Query(None, description="Filter by payment status (paid/partial/unpaid)"),
+  overdue_only: Optional[bool] = Query(None, description="Show only overdue invoices"),
   sort_by: Optional[str] = Query(None, description="Sort field (default: invoice_date)"),
   sort_dir: Optional[str] = Query("desc", description="Sort direction (asc/desc)"),
   db: Session = Depends(get_db)
@@ -72,6 +74,24 @@ def get_invoices(
   if invoice_number:
     query = query.filter(InvoiceModel.invoice_number.ilike(f"%{invoice_number}%"))
 
+  if payment_status:
+    status_map = {
+      'paid': PaymentStatus.PAID,
+      'partial': PaymentStatus.PARTIALLY_PAID,
+      'unpaid': PaymentStatus.UNPAID,
+    }
+    mapped = status_map.get(payment_status.lower())
+    if mapped:
+      query = query.filter(InvoiceModel.payment_status == mapped)
+
+  if overdue_only:
+    now = datetime.utcnow()
+    query = query.filter(
+      InvoiceModel.due_date != None,
+      InvoiceModel.due_date < now,
+      InvoiceModel.payment_status != PaymentStatus.PAID,
+    )
+
   sort_map = {
     "invoice_date": InvoiceModel.invoice_date,
     "grand_total": InvoiceModel.grand_total,
@@ -99,6 +119,7 @@ def get_invoices(
       'customer_name': invoice.customer.name if invoice.customer else None,
       'customer_type': invoice.customer.customer_type if invoice.customer else None,
       'total_amount': invoice.grand_total,
+      'amount_paid': invoice.amount_paid,
       'payment_status': invoice.payment_status.value,
     })
 
@@ -118,6 +139,33 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
   invoice = db.query(InvoiceModel).options(joinedload(InvoiceModel.customer)).filter(InvoiceModel.id == invoice_id).first()
   if not invoice:
     raise HTTPException(status_code=404, detail="Invoice not found")
+
+  # Build per-item returned quantity map
+  returned_qty: dict[int, int] = {}
+  returns_data = []
+  for ret in getattr(invoice, 'returns', []):
+    ret_items = []
+    for rli in ret.line_items:
+      returned_qty[rli.item_id] = returned_qty.get(rli.item_id, 0) + rli.quantity_returned
+      ret_items.append({
+        'item_id': rli.item_id,
+        'item_name': rli.item.item_name if rli.item else None,
+        'quantity_returned': rli.quantity_returned,
+        'amount': rli.amount,
+        'reason': rli.reason,
+        'reason_category': rli.reason_category.value if rli.reason_category else None,
+      })
+    returns_data.append({
+      'id': ret.id,
+      'return_date': ret.return_date.isoformat(),
+      'total_credit': ret.total_credit,
+      'is_partial': ret.is_partial,
+      'notes': ret.notes,
+      'items_returned_count': ret.items_returned_count,
+      'total_items_in_invoice': ret.total_items_in_invoice,
+      'line_items': ret_items,
+    })
+
   return {
     'id': invoice.id,
     'invoice_number': invoice.invoice_number,
@@ -146,9 +194,13 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
         'discount_amount': li.discount_amount,
         'discount_type': li.discount_type,
         'total': li.price * li.quantity - (li.discount_amount or 0),
+        'quantity_returned': returned_qty.get(li.item_id, 0),
+        'gst_rate': li.gst_rate,
+        'hsn_sac_code': li.item.hsn_sac_code if li.item else None,
       }
       for li in invoice.line_items
     ],
+    'returns': returns_data,
   }
 
 
@@ -200,16 +252,27 @@ def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
     if profile and profile.default_tax_rate is not None:
       tax_rate = profile.default_tax_rate
 
+  # Pre-fetch items to get gst_rate for per-item tax calculation
+  line_items_raw = invoice_data.get('line_items', [])
+  item_gst_map: dict = {}
+  for li in line_items_raw:
+    item_id = li.get('item_id')
+    if item_id and li.get('gst_rate') is None:
+      db_item_for_gst = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+      if db_item_for_gst:
+        item_gst_map[item_id] = db_item_for_gst.gst_rate
+
   calculation = InvoiceCalculationService.calculate_invoice_totals(
     line_items=[
       {
-        "item_id": item.item_id,
-        "quantity": item.quantity,
-        "price": item.price,
-        "discount_amount": item.discount_amount,
-        "discount_type": item.discount_type
+        "item_id": li.get('item_id'),
+        "quantity": li.get('quantity'),
+        "price": li.get('price'),
+        "discount_amount": li.get('discount_amount'),
+        "discount_type": li.get('discount_type', 'amount'),
+        "gst_rate": li.get('gst_rate') if li.get('gst_rate') is not None else item_gst_map.get(li.get('item_id')),
       }
-      for item in invoice_data.get('line_items', [])
+      for li in line_items_raw
     ],
     discount_type=invoice_data.get('discount_type', 'amount'),
     discount_amount=invoice_data.get('discount_amount'),
@@ -279,7 +342,8 @@ def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
       quantity=item['quantity'],
       price=item['price'],
       discount_amount=item.get('discount_amount'),
-      discount_type=item.get('discount_type', 'amount')
+      discount_type=item.get('discount_type', 'amount'),
+      gst_rate=item.get('gst_rate') if item.get('gst_rate') is not None else db_item.gst_rate,
     )
     db.add(line_item)
     db_item.current_stock_quantity -= item['quantity']

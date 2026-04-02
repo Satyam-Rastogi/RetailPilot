@@ -11,6 +11,7 @@ const navItems = [
 
 const returnsItems = [
   { path: '/returns', label: 'Returns', icon: '↩️' },
+  { path: '/stock-audit', label: 'Stock Audit', icon: '🔍' },
 ]
 
 const settingsItems = [

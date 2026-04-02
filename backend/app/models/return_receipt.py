@@ -20,7 +20,8 @@ class ReturnReceiptModel(Base):
     __tablename__ = "return_receipts"
 
     id = Column(Integer, primary_key=True, index=True)
-    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=True)   # nullable for standalone GRs
+    customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True) # set on all returns
     return_date = Column(DateTime, nullable=False)
     total_credit = Column(Float, nullable=False, default=0.0)
     notes = Column(Text, nullable=True)
@@ -30,7 +31,8 @@ class ReturnReceiptModel(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
 
-    invoice = relationship("InvoiceModel", backref="returns")
+    invoice = relationship("InvoiceModel", backref="returns", foreign_keys=[invoice_id])
+    customer = relationship("CustomerModel", foreign_keys=[customer_id])
     line_items = relationship("ReturnLineItemModel", back_populates="return_receipt", cascade="all, delete-orphan")
 
 

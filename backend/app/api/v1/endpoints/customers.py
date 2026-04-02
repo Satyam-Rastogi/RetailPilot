@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import datetime
 from app.db.session import get_db
 from app.models.customer import CustomerModel
 from app.schemas.customer import Customer, CustomerCreate, CustomerUpdate, CustomerListResponse
@@ -13,16 +14,24 @@ router = APIRouter()
 @router.get("/", response_model=PaginatedResponse[CustomerListResponse])
 def get_customers(
   skip: int = Query(0, ge=0),
-  limit: int = Query(100, ge=1, le=100),
+  limit: int = Query(100, ge=1, le=1000),
   page: int = Query(1, ge=1),
-  page_size: int = Query(100, ge=1, le=100),
+  page_size: int = Query(100, ge=1, le=1000),
   search: Optional[str] = None,
+  created_after: Optional[str] = Query(None, description="Filter customers created on or after this date (YYYY-MM-DD)"),
   db: Session = Depends(get_db)
 ):
   query = db.query(CustomerModel)
 
   if search:
     query = query.filter(CustomerModel.name.ilike(f"%{search}%"))
+
+  if created_after:
+    try:
+      after_dt = datetime.strptime(created_after, "%Y-%m-%d")
+      query = query.filter(CustomerModel.created_at >= after_dt)
+    except ValueError:
+      pass
 
   if page_size > 0:
     data, total_items, total_pages = paginate_query(query, page, page_size)
@@ -78,7 +87,9 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
   db_customer = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
   if not db_customer:
     raise HTTPException(status_code=404, detail="Customer not found")
-  
+  if db_customer.name == "Walk-in Customer":
+    raise HTTPException(status_code=400, detail="Walk-in Customer is a system record and cannot be deleted.")
+
   db.delete(db_customer)
   db.commit()
   return {"message": "Customer deleted successfully"}

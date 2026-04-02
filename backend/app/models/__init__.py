@@ -2,6 +2,7 @@ from .company_profile import CompanyProfileModel
 from .customer import CustomerModel
 from .supplier import SupplierModel
 from .item import ItemModel
+from .item_variant import ItemVariantModel
 from .stock_audit import StockAuditModel
 from .invoice import InvoiceModel, InvoiceLineItemModel
 from .invoice_sequence import InvoiceSequenceModel
@@ -13,6 +14,7 @@ __all__ = [
   "CustomerModel",
   "SupplierModel",
   "ItemModel",
+  "ItemVariantModel",
   "StockAuditModel",
   "InvoiceModel",
   "InvoiceLineItemModel",

@@ -9,7 +9,15 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: 1,
+      // Axios interceptor handles retries for GET requests; disable React Query's
+      // own retry to avoid compounding (network error → interceptor retries 2×,
+      // then RQ would retry again on top).
+      retry: false,
+      staleTime: 30_000,
+    },
+    mutations: {
+      // Never auto-retry mutations — duplicate writes are worse than a missed retry.
+      retry: false,
     },
   },
 })
@@ -17,7 +25,7 @@ const queryClient = new QueryClient({
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <App />
       </BrowserRouter>
     </QueryClientProvider>

@@ -13,6 +13,7 @@ class CompanyProfileBase(BaseModel):
   receiver_bank_name: Optional[str] = None
   receiver_account_number: Optional[str] = None
   receiver_ifsc_code: Optional[str] = None
+  upi_id: Optional[str] = None
 
 
 class CompanyProfileCreate(CompanyProfileBase):

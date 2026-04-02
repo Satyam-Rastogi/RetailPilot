@@ -1,12 +1,67 @@
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
+import { toast } from '../lib/toast'
 
+// ── Axios instance ────────────────────────────────────────────────────────────
 const api = axios.create({
   baseURL: '/api/v1',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-  maxRedirects: 5,
+  headers: { 'Content-Type': 'application/json' },
+  timeout: 15_000, // 15 s — server must respond within this window
 })
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+/** Pull the most useful human-readable message from an API error response. */
+function extractMessage(error: any): string {
+  const detail = error.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    // FastAPI validation array — join first few
+    return detail
+      .slice(0, 3)
+      .map((d: any) => (typeof d?.msg === 'string' ? d.msg : JSON.stringify(d)))
+      .join('; ')
+  }
+  const status = error.response?.status
+  if (!error.response) return 'Cannot reach the server. Check your connection.'
+  if (status === 404) return 'The requested resource was not found.'
+  if (status === 409) return 'Conflict: this operation could not be completed.'
+  if (status === 422) return 'Validation error. Please check your input.'
+  if (status >= 500) return 'Server error. Please try again in a moment.'
+  return `Unexpected error (${status ?? 'unknown'}).`
+}
+
+// ── Response interceptor — retry + toast ─────────────────────────────────────
+const MAX_RETRIES = 2          // only for GET requests on network/5xx errors
+const BASE_DELAY_MS = 600      // first retry after 600 ms, second after 1 200 ms
+
+api.interceptors.response.use(
+  response => response,
+  async (error) => {
+    const config: AxiosRequestConfig & { _retryCount?: number } = error.config ?? {}
+    const status: number | undefined = error.response?.status
+    const isGet = (config.method ?? 'get').toLowerCase() === 'get'
+    const isNetworkError = !error.response
+    const isServerError = status !== undefined && status >= 500
+
+    // ── Retry GET requests on transient failures ──────────────────────────────
+    if (isGet && (isNetworkError || isServerError)) {
+      config._retryCount = config._retryCount ?? 0
+      if (config._retryCount < MAX_RETRIES) {
+        config._retryCount++
+        const delay = BASE_DELAY_MS * config._retryCount
+        await new Promise(r => setTimeout(r, delay))
+        return api(config)
+      }
+    }
+
+    // ── Toast for errors that pages don't handle inline ───────────────────────
+    // 422 (form validation) is intentionally excluded — pages show inline errors.
+    if (status !== 422) {
+      toast.error(extractMessage(error))
+    }
+
+    return Promise.reject(error)
+  },
+)
 
 export const companyProfileService = {
   get: () => api.get('/company-profile/').then(res => res.data),
@@ -15,11 +70,8 @@ export const companyProfileService = {
 }
 
 export const customerService = {
-  list: (params?: { skip?: number; limit?: number; search?: string }) =>
-    api.get('/customers/', { params }).then(res => {
-      const response = res.data;
-      return response.data || response;
-    }),
+  list: (params?: { page?: number; page_size?: number; search?: string; created_after?: string }) =>
+    api.get('/customers/', { params }).then(res => res.data),
   get: (id: number) => api.get(`/customers/${id}`).then(res => {
       const response = res.data;
       return response.data || response;
@@ -39,11 +91,8 @@ export const customerService = {
 }
 
 export const supplierService = {
-  list: (params?: { skip?: number; limit?: number; search?: string }) =>
-    api.get('/suppliers/', { params }).then(res => {
-      const response = res.data;
-      return response.data || response;
-    }),
+  list: (params?: { page?: number; page_size?: number; search?: string }) =>
+    api.get('/suppliers/', { params }).then(res => res.data),
   get: (id: number) => api.get(`/suppliers/${id}`).then(res => {
       const response = res.data;
       return response.data || response;
@@ -63,11 +112,8 @@ export const supplierService = {
 }
 
 export const itemService = {
-  list: (params?: { skip?: number; limit?: number; search?: string }) =>
-    api.get('/items/', { params }).then(res => {
-      const response = res.data;
-      return (response && response.data) || response;
-    }),
+  list: (params?: { page?: number; page_size?: number; search?: string }) =>
+    api.get('/items/', { params }).then(res => res.data),
   get: (id: number) => api.get(`/items/${id}`).then(res => {
       const response = res.data;
       return (response && response.data) || response;
@@ -90,12 +136,27 @@ export const itemService = {
     }),
 }
 
+export const variantService = {
+  list: (itemId: number) =>
+    api.get(`/items/${itemId}/variants/`).then(res => res.data),
+  create: (itemId: number, data: { variant_value: string; sku?: string; stock_quantity?: number }) =>
+    api.post(`/items/${itemId}/variants/`, data).then(res => res.data),
+  update: (itemId: number, variantId: number, data: { variant_value?: string; sku?: string; stock_quantity?: number }) =>
+    api.put(`/items/${itemId}/variants/${variantId}`, data).then(res => res.data),
+  delete: (itemId: number, variantId: number) =>
+    api.delete(`/items/${itemId}/variants/${variantId}`).then(res => res.data),
+  adjustStock: (itemId: number, variantId: number, data: { delta: number; reason?: string }) =>
+    api.post(`/items/${itemId}/variants/${variantId}/stock`, data).then(res => res.data),
+}
+
+export const stockAuditService = {
+  list: (params?: { page?: number; page_size?: number; item_id?: number }) =>
+    api.get('/items/stock-audit/', { params }).then(res => res.data),
+}
+
 export const invoiceService = {
-  list: (params?: { skip?: number; limit?: number; date_from?: string; date_to?: string; customer_id?: number; customer_name?: string; invoice_number?: string; sort_by?: string; sort_dir?: string }) =>
-    api.get('/invoices/', { params }).then(res => {
-      const response = res.data;
-      return (response && response.data) || response;
-    }),
+  list: (params?: { page?: number; page_size?: number; date_from?: string; date_to?: string; customer_id?: number; customer_name?: string; invoice_number?: string; payment_status?: string; overdue_only?: boolean; sort_by?: string; sort_dir?: string }) =>
+    api.get('/invoices/', { params }).then(res => res.data),
   get: (id: number) => api.get(`/invoices/${id}`).then(res => {
       const response = res.data;
       return (response && response.data) || response;
@@ -178,14 +239,15 @@ export const ledgerService = {
 }
 
 export const wholesaleLedgerService = {
-  getWholesaleLedgers: () =>
-    customerService.list().then(customers => {
+  getWholesaleLedgers: (dateFrom?: string, dateTo?: string) =>
+    customerService.list({ page_size: 100 }).then(res => {
+      const customers = res.data || []
       // Filter for wholesale customers only
       const wholesale = customers.filter((c: any) => c.customer_type === 'Wholesale')
 
       // Fetch ledger data for each customer in parallel
       const ledgerPromises = wholesale.map((customer: any) =>
-        ledgerService.getCustomerLedger(customer.id).catch(() => null)
+        ledgerService.getCustomerLedger(customer.id, dateFrom, dateTo).catch(() => null)
       )
 
       return Promise.all(ledgerPromises).then(ledgers => {

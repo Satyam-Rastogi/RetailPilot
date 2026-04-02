@@ -21,6 +21,7 @@ class InvoiceLineItemModel(Base):
   price = Column(Float, nullable=False)
   discount_amount = Column(Float, nullable=True)
   discount_type = Column(String(20), nullable=True, default="amount")
+  gst_rate = Column(Float, nullable=True)   # snapshot of item's GST rate at invoice time
 
   invoice = relationship("InvoiceModel", back_populates="line_items")
   item = relationship("ItemModel", backref="invoice_line_items")

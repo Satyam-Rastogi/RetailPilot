@@ -20,7 +20,8 @@ class ReturnLineItem(ReturnLineItemCreate):
 
 
 class ReturnReceiptBase(BaseModel):
-    invoice_id: int
+    invoice_id: Optional[int] = None    # None for standalone GRs
+    customer_id: Optional[int] = None  # required when invoice_id is absent
     return_date: datetime
     total_credit: float
     notes: Optional[str] = None
