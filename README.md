@@ -121,16 +121,21 @@ npm run dev       # runs on http://localhost:5173
 - Keyboard accessibility: Escape/Tab/Enter/Arrow with focus trap on all modals
 - GSTIN format validation (regex) on customer, supplier, and company profile
 - Alembic migration infrastructure with initial schema migration
+- Gross margin % column on items table (retail gross margin, color-coded)
+- Low-stock badge on sidebar Inventory nav item (live count, refreshes every 60s)
+- "New Invoice" button on customer LedgerPage (pre-fills modal with that customer)
+- HSN/SAC code required when `gst_rate > 0` on invoice line items (API validation)
+- PO reference number on invoices (field, modal input, detail view, print)
 
-### Open (P2 — Strategic)
+### Open (Next Sprints)
 
-- Global outstanding receivables view (P2-6) — all customers sorted by balance with overdue flags
+- Global outstanding receivables view (P2-6) — all customers sorted by balance with overdue flags ← **Sprint 2**
 - Credit limit per customer with breach warnings (P2-5)
+- Aging report: outstanding invoices bucketed by days overdue (WS-1)
+- One-step retail counter sale (invoice + payment in single flow) (RET-2)
+- Daily sales summary by payment method (RET-4)
 - Revenue reporting / analytics dashboard (P2-1)
 - GST-compliant PDF: place of supply, amount in words, IGST routing (P2-2)
-- One-step retail counter sale (invoice + payment in single flow) (RET-2)
-- Aging report: outstanding invoices bucketed by age (WS-1)
-- Daily sales summary by payment method (RET-4)
 
 ## Project Structure
 
