@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from datetime import datetime
 from typing import List, Optional
 
@@ -11,10 +11,18 @@ class InvoiceLineItemBase(BaseModel):
   discount_amount: Optional[float] = None
   discount_type: Optional[str] = 'amount'
   total: float
+  gst_rate: Optional[float] = None
+  hsn_sac_code: Optional[str] = None
 
 
 class InvoiceLineItemCreate(InvoiceLineItemBase):
-  pass
+  @model_validator(mode='after')
+  def hsn_required_when_gst_set(self) -> 'InvoiceLineItemCreate':
+    if self.gst_rate and self.gst_rate > 0 and not (self.hsn_sac_code or '').strip():
+      raise ValueError(
+        f"HSN/SAC code is required for items with a GST rate (item_id={self.item_id})"
+      )
+    return self
 
 
 class InvoiceLineItem(InvoiceLineItemBase):

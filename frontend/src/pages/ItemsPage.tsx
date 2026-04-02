@@ -576,6 +576,7 @@ function ItemsPage() {
                   <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">SKU</th>
                   <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">Stock Level</th>
                   <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">Pricing (Ret/WS)</th>
+                  <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">Margin</th>
                   <th className="px-4 py-3 text-left text-[10px] font-mono uppercase tracking-widest">Status</th>
                   <th className="px-4 py-3 text-right text-[10px] font-mono uppercase tracking-widest">Adjust</th>
                 </tr>
@@ -676,6 +677,24 @@ function ItemsPage() {
                             </div>
                             {!item.has_variants && <Sparkline data={trend} width={56} height={20} filled />}
                           </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          {(() => {
+                            const pp = (item as any).purchase_price
+                            if (!pp || pp <= 0) return <span className={cn('font-mono text-xs', isExpanded ? 'text-surface/40' : 'text-ink-light/50 group-hover:text-surface/40')}>—</span>
+                            const margin = ((item.selling_price_retail - pp) / item.selling_price_retail) * 100
+                            const isGood = margin >= 20
+                            return (
+                              <span className={cn(
+                                'font-mono text-sm font-bold',
+                                isGood
+                                  ? isExpanded ? 'text-success' : 'text-success group-hover:text-success'
+                                  : isExpanded ? 'text-warning' : 'text-warning group-hover:text-warning',
+                              )}>
+                                {margin.toFixed(1)}%
+                              </span>
+                            )
+                          })()}
                         </td>
                         <td className="px-4 py-4">
                           <span className={cn(

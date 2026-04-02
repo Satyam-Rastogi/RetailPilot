@@ -1,5 +1,6 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, FileText, Users, BookOpen, Building2,
   Package, RotateCcw, Search, Settings, ChevronLeft, Sun, Moon, X,
@@ -7,6 +8,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useTheme } from './ThemeProvider'
 import { useSettings } from './SettingsProvider'
+import api from '../services/api'
 
 const NAV_ITEMS = [
   { name: 'Dashboard', path: '/', icon: LayoutDashboard },
@@ -31,6 +33,13 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
   const location = useLocation()
   const { theme, setTheme } = useTheme()
   const { userName, userDesignation } = useSettings()
+
+  const { data: lowStockCount } = useQuery<number>({
+    queryKey: ['low-stock-count'],
+    queryFn: () => api.get('/items/?page_size=1&low_stock_only=true').then(r => r.data.total_items as number),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+  })
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-paper border-r border-line">
@@ -82,7 +91,15 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
             >
               <item.icon className={cn('w-5 h-5 shrink-0 transition-colors', isActive ? 'text-accent' : 'text-ink-light group-hover:text-accent')} />
               {isExpanded && (
-                <span className="font-mono text-sm uppercase tracking-wider whitespace-nowrap">{item.name}</span>
+                <span className="font-mono text-sm uppercase tracking-wider whitespace-nowrap flex-1">{item.name}</span>
+              )}
+              {item.path === '/items' && (lowStockCount ?? 0) > 0 && (
+                <span className={cn(
+                  'flex items-center justify-center text-[10px] font-mono font-bold min-w-[18px] h-[18px] px-1 bg-danger text-on-status',
+                  !isExpanded && 'absolute top-1 right-1',
+                )}>
+                  {lowStockCount}
+                </span>
               )}
             </NavLink>
           )

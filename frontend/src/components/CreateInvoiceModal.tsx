@@ -331,13 +331,15 @@ function ItemCombobox({
 interface CreateInvoiceModalProps {
   open: boolean
   onClose: () => void
+  onSuccess?: () => void
+  preselectedCustomerId?: number
 }
 
-export function CreateInvoiceModal({ open, onClose }: CreateInvoiceModalProps) {
+export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustomerId }: CreateInvoiceModalProps) {
   const queryClient = useQueryClient()
 
   const [createForm, setCreateForm] = useState({
-    customer_id: 0,
+    customer_id: preselectedCustomerId ?? 0,
     invoice_date: new Date().toISOString().split('T')[0],
     discount_type: 'amount',
     discount_amount: 0,
@@ -359,6 +361,13 @@ export function CreateInvoiceModal({ open, onClose }: CreateInvoiceModalProps) {
   const quickAddRef = useRef<HTMLDivElement>(null)
   useModalKeyboard(open && !showQuickAdd, onClose, mainModalRef)
   useModalKeyboard(showQuickAdd, () => setShowQuickAdd(false), quickAddRef)
+
+  // Sync preselected customer when modal opens
+  useEffect(() => {
+    if (open && preselectedCustomerId) {
+      setCreateForm(f => ({ ...f, customer_id: preselectedCustomerId }))
+    }
+  }, [open, preselectedCustomerId])
 
   const quickAddMutation = useMutation({
     mutationFn: (data: any) => customerService.create(data),
@@ -399,6 +408,7 @@ export function CreateInvoiceModal({ open, onClose }: CreateInvoiceModalProps) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] })
       queryClient.invalidateQueries({ queryKey: ['items'] })
+      onSuccess?.()
       handleClose()
     },
     onError: (error: any) => {

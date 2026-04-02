@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ArrowLeft, Plus, Pencil, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Plus, Pencil, Trash2, X, FileText } from 'lucide-react'
 import { ledgerService, customerService } from '../services/api'
 import type { CustomerLedger, CustomerListResponse, Payment, PaginatedResponse } from '../types/api'
 import { useSettings } from '../components/SettingsProvider'
 import { cn } from '../lib/utils'
+import { CreateInvoiceModal } from '../components/CreateInvoiceModal'
 
 const statusConfig: Record<string, string> = {
   Paid: 'text-success border-success',
@@ -24,6 +25,7 @@ export default function LedgerPage() {
   const [dateTo, setDateTo] = useState('')
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerListResponse | null>(null)
 
+  const [showCreateInvoice, setShowCreateInvoice] = useState(false)
   const [showNewPaymentModal, setShowNewPaymentModal] = useState(false)
   const [showEditPaymentModal, setShowEditPaymentModal] = useState(false)
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
@@ -273,12 +275,20 @@ export default function LedgerPage() {
               </p>
             )}
           </div>
-          <button
-            onClick={handleNewPayment}
-            className="flex items-center gap-2 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
-          >
-            <Plus className="w-4 h-4" /> New Payment
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowCreateInvoice(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-paper text-ink font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-hover active:brutal-shadow-active brutal-focus transition-all"
+            >
+              <FileText className="w-4 h-4" /> New Invoice
+            </button>
+            <button
+              onClick={handleNewPayment}
+              className="flex items-center gap-2 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
+            >
+              <Plus className="w-4 h-4" /> New Payment
+            </button>
+          </div>
         </div>
         <div className="w-16 h-0.5 bg-accent mt-4" />
       </header>
@@ -518,6 +528,14 @@ export default function LedgerPage() {
           </div>
         </>
       )}
+
+      {/* Create Invoice Modal — pre-filled with this customer */}
+      <CreateInvoiceModal
+        open={showCreateInvoice}
+        onClose={() => setShowCreateInvoice(false)}
+        onSuccess={() => queryClient.invalidateQueries({ queryKey: ['customerLedger'] })}
+        preselectedCustomerId={Number(customerId)}
+      />
 
       {/* New Payment Modal */}
       {showNewPaymentModal && (

@@ -77,6 +77,7 @@ class ItemListResponse(BaseModel):
   sku: Optional[str]
   unit_of_measurement: Optional[str] = "Pcs"
   current_stock_quantity: int
+  purchase_price: Optional[float] = None
   selling_price_retail: float
   selling_price_wholesale: float
   enable_low_stock_alert: bool

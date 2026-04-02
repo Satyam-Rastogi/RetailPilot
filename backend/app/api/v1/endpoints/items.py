@@ -31,6 +31,7 @@ def _build_list_response(item: ItemModel) -> ItemListResponse:
     sku=item.sku,
     unit_of_measurement=item.unit_of_measurement,
     current_stock_quantity=total_stock,
+    purchase_price=item.purchase_price,
     selling_price_retail=item.selling_price_retail,
     selling_price_wholesale=item.selling_price_wholesale,
     enable_low_stock_alert=item.enable_low_stock_alert,
