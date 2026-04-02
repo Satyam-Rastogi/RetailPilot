@@ -1,159 +1,159 @@
-# RetailPilot Ledger System
+# RetailPilot
 
-A FIFO-based ledger system for wholesale customers with per-customer ledgers, a complete frontend ledger UI, seed data validation, and an extensible plan for AI-assisted orchestration. The project emphasizes data integrity, auditable allocations, and a modern frontend UI for inspecting ledgers, invoices, and payments.
+A FIFO-based shop management system for small Indian retail and wholesale businesses. Handles invoicing, payments, ledgers, GST tax breakdowns, stock tracking, and returns — built to production quality as a solo project.
 
 ## Why RetailPilot
 
-- FIFO allocation: payments are applied to oldest unpaid invoices first, ensuring predictable, auditable behavior.
-- Explicit ORM relationships: back_populates are used to preserve clear bidirectional links between entities, avoiding common ORM pitfalls.
-- End-to-end visibility: per-customer ledgers, per-invoice status, and per-payment allocations are exposed via a robust API and a polished frontend.
-- Seeded data and validation: a comprehensive seed makes it easy to reproduce scenarios and verify integrity.
-- Extensible roadmap: designed to accommodate pagination, caching, lazy loading, and AI-assisted orchestration.
+- **FIFO allocation:** payments apply to oldest unpaid invoices first — predictable, auditable, correct.
+- **Per-item GST:** CGST/SGST split per rate, HSN-wise tax summary table on every invoice.
+- **Three modes:** Retail (B2C walk-in, immediate payment), Wholesale (B2B credit/FIFO ledger), Mixed (both simultaneously).
+- **Alembic migrations:** all schema changes version-controlled; no manual ALTER TABLE scripts.
+- **Structured logging:** request-timing middleware, global exception handlers, per-module loggers.
 
 ## Tech Stack
 
-- Backend: FastAPI, SQLAlchemy ORM, SQLite (local dev), Uvicorn
-- Frontend: React + TypeScript, React Query
-- Tests: PyTest with HTTPX for API tests
-- Seed & Migrations: Python scripts for seeding and validation
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI, SQLAlchemy ORM, SQLite, Uvicorn |
+| Migrations | Alembic (version-controlled schema) |
+| Frontend | React 18, TypeScript, Tailwind CSS, Vite |
+| State | TanStack Query (React Query) |
+| UI | Framer Motion, Recharts, Lucide React, Sonner |
+| Fonts | Syne (display), Inter (body), Geist Mono (numbers) |
 
-## Core Concepts & Data Model
+## Data Model
 
-- Core Entities:
-  - Customer: basic profile data with type (Wholesale/Retail).
-  - Invoice: represents charges to a customer; includes grand_total, amount_paid, and unpaid balance.
-  - Payment: money received from a customer; can have multiple allocations to invoices.
-  - PaymentAllocation: maps a payment to a specific invoice with an allocated amount.
-- FIFO Allocation:
-  - Payments post to the oldest unpaid invoices first.
-  - Overpayments create a credit balance recorded in the payment notes; no forward-invariance on invoices.
-  - Deleting a payment reverses allocations back to the invoices.
-- Ledger Calculations:
-  - total_invoiced: sum of all invoices’ grand_total for a customer.
-  - total_paid: sum of all payments for a customer.
-  - total_unpaid: total_invoiced - total_paid.
+### Core Entities
 
-## Data Model Details
+- **Customer** — `name`, `phone`, `email`, `address`, `gstin`, `customer_type` (Retail/Wholesale), `credit_days`
+- **Supplier** — `name`, `contact_person`, `phone`, `gstin`, bank details
+- **Item** — `item_name`, `sku`, `brand`, `selling_price_retail/wholesale`, `purchase_price`, `hsn_sac_code`, `gst_rate`, `current_stock_quantity`, `low_stock_threshold`, `is_active` (soft delete)
+- **ItemVariant** — size/color variants with per-variant stock
+- **Invoice** — `invoice_number`, `customer_id`, `invoice_date`, `due_date`, `grand_total`, `amount_paid`, `payment_status`
+- **InvoiceLineItem** — `item_id`, `quantity`, `unit_price`, `gst_rate`, `hsn_sac_code` (snapshot at invoice time)
+- **Payment** — `customer_id`, `date`, `amount`, `payment_method`, `reference_number`, `credit_balance`
+- **PaymentAllocation** — maps a payment to a specific invoice with `allocated_amount`
+- **ReturnReceipt** — `invoice_id`, `customer_id`, `total_credit`, `is_partial`
+- **ReturnLineItem** — `item_id`, `quantity_returned`, `amount`, validated against original invoice qty
+- **StockAudit** — `item_id`, `delta`, `delta_after`, `reason` — every stock movement logged
+- **CompanyProfile** — `shop_name`, `shop_gstin`, `upi_id`, bank details, `default_tax_rate`
 
-- Customer (CustomerModel)
-  - id: integer, primary key
-  - name: string
-  - phone_number: string
-  - address: string
-  - gstin: string
-  - customer_type: string (Wholesale/Retail)
-  - notes: text
-  - created_at / updated_at: timestamps
-  - Relationships: invoices, payments
+### FIFO Logic
 
-- Invoice (InvoiceModel)
-  - id, invoice_number, invoice_date
-  - customer_id: FK to customers.id
-  - sub_total, tax_rate, total_tax_amount, grand_total
-  - discount_type, discount_amount, notes
-  - amount_paid: amount already paid (sum of allocations)
-  - payment_status: Unpaid / Partially Paid / Paid
-  - created_at / updated_at
-  - Relationships: customer, line_items, payment_allocations
+- Payments allocate to oldest unpaid invoices first (order by `invoice_date ASC`)
+- Overpayments set `PaymentModel.credit_balance`; not written to notes
+- Return credits auto-create a `PaymentModel(payment_method="credit_note")` and FIFO-allocate
+- Deleting a payment reverses all its `PaymentAllocation` rows and adjusts `invoice.amount_paid`
 
-- Payment (PaymentModel)
-  - id, customer_id, date, amount, notes, created_at
-  - Relationships: customer, allocations
+## API Endpoints (Selected)
 
-- PaymentAllocation (PaymentAllocationModel)
-  - id, payment_id, invoice_id, allocated_amount, created_at
-  - Relationships: payment, invoice
+```
+GET  /api/v1/invoices/summary/              # KPI counts + outstanding totals (dashboard)
+GET  /api/v1/invoices/                      # list with filters: payment_status, overdue_only, customer_name, date range
+POST /api/v1/invoices/                      # create invoice + line items; validates stock before deducting
+GET  /api/v1/invoices/{id}                  # detail with line items, payments, returns
+DELETE /api/v1/invoices/{id}                # blocked if amount_paid > 0
 
-## API Surface (Selected Endpoints)
+GET  /api/v1/payments/customer/{id}/ledger  # FIFO ledger: invoices + payments + totals with date filter
+POST /api/v1/payments/                      # create payment; runs FIFO allocation automatically
+DELETE /api/v1/payments/{id}                # reverses allocations, resets invoice statuses
 
-- Payments
-  - POST /api/v1/payments/ – Create a payment; FIFO allocation happens automatically
-  - GET /api/v1/payments/ – List payments; supports filters by customer_id, date_from, date_to, skip, limit
-  - GET /api/v1/payments/{payment_id} – Details of a payment with allocations
-  - PATCH /api/v1/payments/{payment_id} – Update non-financial fields (date, notes)
-  - DELETE /api/v1/payments/{payment_id} – Delete a payment and reverse allocations
-- Ledger
-  - GET /api/v1/payments/customer/{customer_id}/ledger – Ledger summary with invoices and payments
-  - GET /api/v1/payments/customer/{customer_id}/ledger/invoices – Invoice ledger only
-- Invoices & Items
-  - Endpoints for invoices and items used by the ledger UI
-- AI Assistant (Phase 6+)
-  - POST /api/v1/assistant/execute – Accepts structured intents and executes plans (dry-run by default)
+GET  /api/v1/items/                         # list with search + low_stock_only filter
+POST /api/v1/items/{id}/adjust-stock        # manual adjustment with reason; writes StockAudit row
+GET  /api/v1/items/stock-audit/             # paginated audit log
 
-## Frontend Overview
+POST /api/v1/returns/                       # create return; validates qty, restores stock, creates credit_note payment
+```
 
-- Ledger Page: per-customer ledger with a summary of Total Invoiced, Total Paid, and Total Unpaid.
-- Invoices Table: shows per-invoice totals and a status indicator (Unpaid / Partially Paid / Paid).
-- Payments Table: shows date, amount, notes, and per-payment allocations.
-- Payment Management: create, edit (date/notes only), and delete with confirmation.
-- Date Range Filtering: filter ledgers by start/end date.
+## Getting Started
 
-## Seed Data & Validation
+### Backend
 
-- Seed covers: 8 customers (5 Wholesale, 3 Retail), 12 items, 5 suppliers, 24 invoices, 13 payments, and 22 allocations.
-- Validation rules:
-  - grand_total = sub_total + tax - discount
-  - amount_paid equals sum of allocations for each invoice
-  - outstanding equals grand_total - amount_paid
+```bash
+cd backend
+python -m venv venv
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
 
-## Getting Started (Local Development)
+pip install -r requirements.txt
 
-Prerequisites:
-- Backend: Python 3.11+, SQLite, virtualenv
-- Frontend: Node.js 18±, npm/yarn
+# First run: creates DB schema and auto-stamps Alembic at head
+PYTHONPATH=. uvicorn app.main:app --reload --port 8000
 
-Backend setup:
-- cd backend
-- python -m venv venv
-- Windows: venv\Scripts\activate, Linux/macOS: source venv/bin/activate
-- pip install -r requirements.txt
-- PYTHONPATH=. uvicorn app.main:app --reload --port 8000
+# After schema changes, generate and apply migrations:
+alembic revision --autogenerate -m "describe_change"
+alembic upgrade head
+```
 
-Frontend setup:
-- cd frontend
-- npm install
-- npm run dev
+### Frontend
 
-Seed Data & Validation:
-- Run seed script to populate data and validate integrity (see backend/scripts and seed files)
+```bash
+cd frontend
+npm install
+npm run dev       # runs on http://localhost:5173
+```
 
-Tests:
-- Backend: pytest tests/ -v
+## Features
 
-## Observability, Security & Auditing
+### Done
 
-- The system records created_at timestamps for payments and allocations to enable full audit trails.
-- Security and secrets handling are designed for future extension; plan for role-based mutations and audit logging in subsequent phases.
+- Invoice management (create, view, delete) with stock validation
+- FIFO payment allocation engine with full reversal on delete
+- Per-customer ledger with date range filtering (invoices + payments both filtered)
+- Return receipts with quantity validation against original invoice
+- Return credits auto-allocated via FIFO into customer payment history
+- Per-item GST rate (0/5/12/18/28%) with CGST/SGST breakdown grouped by rate
+- HSN-wise tax summary table on invoice detail and print layout
+- Stock management: adjust stock with reason, full audit log
+- Soft delete for items (`is_active`) — history preserved
+- Walk-in Customer auto-seeded (retail counter sales without creating a named customer)
+- Payment method field (Cash/UPI/Card/Cheque/Bank Transfer) + reference number
+- Auto price fill in invoice creation based on customer type (retail/wholesale)
+- Server-side pagination on all list endpoints
+- Server-side search on customers, suppliers, items, invoices
+- Overdue invoice filter (`overdue_only`) + payment_status filter
+- `due_date` on invoices, auto-calculated from `customer.credit_days`
+- Dashboard KPI cards via `/invoices/summary/` (one SQL aggregate query)
+- Low-stock items filtered at backend (`?low_stock_only=true`)
+- GST invoice print layout with clean white styling
+- Keyboard accessibility: Escape/Tab/Enter/Arrow with focus trap on all modals
+- GSTIN format validation (regex) on customer, supplier, and company profile
+- Alembic migration infrastructure with initial schema migration
 
-## Roadmap & Phases
+### Open (P2 — Strategic)
 
-- Phase 1: ORM Fix – explicit back_populates to remove ORM collisions
-- Phase 2: FIFO Allocation Engine & Ledger APIs – complete
-- Phase 3: Frontend Ledger UI – complete
-- Phase 4: Seed, Migrations & Validation – complete
-- Phase 5: Payment Management UI (create/edit/delete with FIFO updates) – complete
-- Phase 6+: AI Orchestration & Pagination/Caching/Lazy Loading – upcoming
-- Phase 7+: Bulk operations, reports, multi-tenancy – future
+- Global outstanding receivables view (P2-6) — all customers sorted by balance with overdue flags
+- Credit limit per customer with breach warnings (P2-5)
+- Revenue reporting / analytics dashboard (P2-1)
+- GST-compliant PDF: place of supply, amount in words, IGST routing (P2-2)
+- One-step retail counter sale (invoice + payment in single flow) (RET-2)
+- Aging report: outstanding invoices bucketed by age (WS-1)
+- Daily sales summary by payment method (RET-4)
 
-## Contributing
+## Project Structure
 
-- Follow the repository’s guidelines for PRs and testing
-- Keep changes surgical and well-scoped to avoid regressions
-- Ensure tests pass before requesting a review
-
-## Licensing
-
-- Project licensed under the MIT license (as applicable in repository).
-
-## Appendix: Quick Start Examples
-
-- Get the ledger for a customer
-  - `curl -X GET http://localhost:8000/api/v1/payments/customer/1/ledger`
-
-- Create a payment for a customer
-  - `curl -X POST http://localhost:8000/api/v1/payments/ \n  -H "Content-Type: application/json" \n  -d '{"customer_id":1,"date":"2025-12-01","amount":1000,"notes":"Seed payment"}'`
-
-- View a payment with allocations
-  - `curl -X GET http://localhost:8000/api/v1/payments/1`
-
-
+```
+RetailPilot/
+├── backend/
+│   ├── alembic/                   # migration scripts
+│   │   └── versions/              # one file per migration
+│   ├── app/
+│   │   ├── api/v1/endpoints/      # FastAPI route handlers
+│   │   ├── core/                  # logging_config.py
+│   │   ├── db/                    # session.py, base.py
+│   │   ├── domain/                # entities, services (calculation_service.py)
+│   │   ├── models/                # SQLAlchemy ORM models
+│   │   ├── schemas/               # Pydantic request/response schemas
+│   │   └── utils/                 # pagination, normalization
+│   └── alembic.ini
+└── frontend/
+    └── src/
+        ├── components/            # reusable UI (Pagination, CreateInvoiceModal, etc.)
+        ├── hooks/                 # useModalKeyboard
+        ├── lib/                   # utils.ts, toast.ts
+        ├── pages/                 # one file per route
+        ├── services/api.ts        # typed API client
+        └── types/api.ts           # all TypeScript interfaces
+```
