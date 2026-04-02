@@ -52,6 +52,7 @@ def get_items(
   page: int = Query(1, ge=1),
   page_size: int = Query(20, ge=1, le=1000),
   search: Optional[str] = None,
+  low_stock_only: bool = Query(False, description="Return only items that are at or below their low-stock threshold"),
   db: Session = Depends(get_db),
 ):
   query = db.query(ItemModel).options(joinedload(ItemModel.variants)).filter(ItemModel.is_active == True)
@@ -63,7 +64,18 @@ def get_items(
       ItemModel.brand_name.ilike(f"%{search}%")
     )
 
+  if low_stock_only:
+    # Filter at DB level for non-variant items (fast path).
+    # Variant items: load the enable_low_stock_alert ones and post-filter.
+    query = query.filter(ItemModel.enable_low_stock_alert == True)
+
   data, total_items, total_pages = paginate_query(query, page, page_size)
+
+  if low_stock_only:
+    # Post-filter to include variant items where summed stock is low
+    data = [item for item in data if _build_list_response(item).is_low_stock]
+    total_items = len(data)
+    total_pages = 1
   result = [_build_list_response(item) for item in data]
 
   return PaginatedResponse(

@@ -176,35 +176,20 @@ function DashboardPage() {
     queryFn: () => api.get('/items/?page_size=1').then(r => r.data.total_items as number),
   })
 
-  const { data: unpaidCount } = useQuery<number>({
-    queryKey: ['invoices-unpaid-count'],
-    queryFn: () => api.get('/invoices/?page_size=1&payment_status=unpaid').then(r => r.data.total_items as number),
+  const { data: invoiceSummary } = useQuery({
+    queryKey: ['invoices-summary'],
+    queryFn: () => api.get('/invoices/summary/').then(r => r.data as {
+      paid: { count: number; outstanding: number }
+      partial: { count: number; outstanding: number }
+      unpaid: { count: number; outstanding: number }
+      total_outstanding: number
+    }),
   })
 
-  const { data: outstandingAmount } = useQuery<number>({
-    queryKey: ['invoices-outstanding-amount'],
-    queryFn: async () => {
-      const [unpaidRes, partialRes] = await Promise.all([
-        api.get('/invoices/?page_size=500&payment_status=unpaid'),
-        api.get('/invoices/?page_size=500&payment_status=partial'),
-      ])
-      const all: { total_amount: number; amount_paid?: number }[] = [
-        ...(unpaidRes.data.data ?? []),
-        ...(partialRes.data.data ?? []),
-      ]
-      return all.reduce((sum, inv) => sum + (inv.total_amount - (inv.amount_paid ?? 0)), 0)
-    },
-  })
-
-  const { data: paidCount } = useQuery<number>({
-    queryKey: ['invoices-paid-count'],
-    queryFn: () => api.get('/invoices/?page_size=1&payment_status=paid').then(r => r.data.total_items as number),
-  })
-
-  const { data: partialCount } = useQuery<number>({
-    queryKey: ['invoices-partial-count'],
-    queryFn: () => api.get('/invoices/?page_size=1&payment_status=partial').then(r => r.data.total_items as number),
-  })
+  const paidCount    = invoiceSummary?.paid.count    ?? 0
+  const partialCount = invoiceSummary?.partial.count ?? 0
+  const unpaidCount  = invoiceSummary?.unpaid.count  ?? 0
+  const outstandingAmount = invoiceSummary?.total_outstanding ?? undefined
 
   const { data: invoicesData } = useQuery({
     queryKey: ['invoices-recent'],
@@ -212,12 +197,12 @@ function DashboardPage() {
   })
 
   const { data: itemsData } = useQuery({
-    queryKey: ['items-all-dashboard'],
-    queryFn: () => itemService.list({ page_size: 100 }),
+    queryKey: ['items-low-stock-dashboard'],
+    queryFn: () => itemService.list({ page_size: 20, low_stock_only: true }),
   })
 
   const recentInvoices: InvoiceListResponse[] = invoicesData?.data ?? []
-  const lowStockItems: ItemListResponse[] = (itemsData?.data ?? []).filter((item: ItemListResponse) => item.is_low_stock)
+  const lowStockItems: ItemListResponse[] = itemsData?.data ?? []
 
   const totalInvoices = (paidCount ?? 0) + (unpaidCount ?? 0) + (partialCount ?? 0)
 

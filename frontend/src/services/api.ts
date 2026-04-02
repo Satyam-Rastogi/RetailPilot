@@ -112,7 +112,7 @@ export const supplierService = {
 }
 
 export const itemService = {
-  list: (params?: { page?: number; page_size?: number; search?: string }) =>
+  list: (params?: { page?: number; page_size?: number; search?: string; low_stock_only?: boolean }) =>
     api.get('/items/', { params }).then(res => res.data),
   get: (id: number) => api.get(`/items/${id}`).then(res => {
       const response = res.data;

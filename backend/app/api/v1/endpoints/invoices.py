@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
 from app.db.session import get_db
@@ -132,6 +133,34 @@ def get_invoices(
     has_next=page < total_pages if page_size > 0 else False,
     has_previous=page > 1 if page_size > 0 else False
   )
+
+
+@router.get("/summary/", response_model=dict)
+def get_invoices_summary(db: Session = Depends(get_db)):
+  """Aggregated invoice totals — used by dashboard KPI cards (no full scan in app layer)."""
+  rows = (
+    db.query(
+      InvoiceModel.payment_status,
+      func.count(InvoiceModel.id).label("count"),
+      func.coalesce(func.sum(InvoiceModel.grand_total), 0).label("total"),
+      func.coalesce(func.sum(InvoiceModel.amount_paid), 0).label("paid"),
+    )
+    .group_by(InvoiceModel.payment_status)
+    .all()
+  )
+
+  summary = {s.value: {"count": 0, "outstanding": 0.0} for s in PaymentStatus}
+  for row in rows:
+    outstanding = float(row.total) - float(row.paid)
+    summary[row.payment_status.value] = {"count": row.count, "outstanding": round(outstanding, 2)}
+
+  total_outstanding = sum(v["outstanding"] for v in summary.values())
+  return {
+    "paid":    summary.get("paid",    {"count": 0, "outstanding": 0.0}),
+    "partial": summary.get("partial", {"count": 0, "outstanding": 0.0}),
+    "unpaid":  summary.get("unpaid",  {"count": 0, "outstanding": 0.0}),
+    "total_outstanding": round(total_outstanding, 2),
+  }
 
 
 @router.get("/{invoice_id}", response_model=dict)

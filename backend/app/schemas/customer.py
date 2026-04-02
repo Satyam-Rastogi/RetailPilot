@@ -1,6 +1,9 @@
-from pydantic import BaseModel, ConfigDict
+import re
+from pydantic import BaseModel, ConfigDict, field_validator
 from datetime import datetime
 from typing import Optional
+
+_GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$")
 
 
 class CustomerBase(BaseModel):
@@ -9,6 +12,16 @@ class CustomerBase(BaseModel):
   email: Optional[str] = None
   address: Optional[str] = None
   gstin: Optional[str] = None
+
+  @field_validator("gstin", mode="before")
+  @classmethod
+  def validate_gstin(cls, v: Optional[str]) -> Optional[str]:
+    if not v or v.strip() in ("", "N/A"):
+      return v
+    cleaned = v.strip().upper()
+    if not _GSTIN_RE.match(cleaned):
+      raise ValueError("Invalid GSTIN format. Expected: 22AAAAA0000A1Z5")
+    return cleaned
   customer_type: Optional[str] = "Retail"
   credit_days: Optional[int] = 0
   notes: Optional[str] = None
