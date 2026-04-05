@@ -37,6 +37,7 @@ export interface CustomerBase {
   gstin?: string
   customer_type?: string
   credit_days?: number
+  credit_limit?: number
   notes?: string
 }
 
@@ -52,6 +53,7 @@ export interface CustomerListResponse {
   phone_number?: string
   customer_type: string
   credit_days?: number
+  credit_limit?: number
 }
 
 export interface SupplierBase {
@@ -104,6 +106,8 @@ export interface ItemBase {
   variant_type?: string
   hsn_sac_code?: string
   gst_rate?: number
+  category?: string
+  supplier_id?: number
 }
 
 export interface Item extends ItemBase {
@@ -128,9 +132,13 @@ export interface ItemListResponse {
   variant_type?: string
   hsn_sac_code?: string
   gst_rate?: number
+  category?: string
+  supplier_id?: number
+  supplier_name?: string
   variants_count?: number
   variants?: ItemVariant[]
   is_low_stock?: boolean
+  purchase_price?: number
 }
 
 export interface InvoiceLineItem {
@@ -350,14 +358,101 @@ export interface InvoiceAllocationDetail {
   created_at: string
 }
 
-export interface WholesaleLedgerSummary {
+export interface CustomerOutstanding {
+  id: number
+  name: string
+  phone_number?: string
+  customer_type: string
+  total_outstanding: number
+  overdue_amount: number
+  overdue_invoice_count: number
+  unpaid_invoice_count: number
+  oldest_unpaid_date?: string
+}
+
+export interface AgingBucket {
   customer_id: number
   customer_name: string
   customer_type: string
-  total_invoiced: number
-  total_paid: number
-  total_unpaid: number
-  last_activity: string | null
+  current: number
+  days_1_30: number
+  days_31_60: number
+  days_61_90: number
+  days_over_90: number
+  total_outstanding: number
+}
+
+export interface AgingReportResponse {
+  rows: AgingBucket[]
+  totals: AgingBucket
+}
+
+export interface SalesByMethod {
+  method: string
+  count: number
+  total: number
+}
+
+export interface SalesByType {
+  customer_type: string
+  count: number
+  total: number
+}
+
+export interface DailySummaryResponse {
+  date: string
   invoice_count: number
+  total_sales: number
+  by_customer_type: SalesByType[]
   payment_count: number
+  total_collected: number
+  by_payment_method: SalesByMethod[]
+}
+
+export interface MonthlyRevenue {
+  month: string
+  month_label: string
+  retail: number
+  wholesale: number
+  total: number
+  invoice_count: number
+}
+
+export interface TopCustomer {
+  customer_id: number
+  customer_name: string
+  customer_type: string
+  total: number
+  invoice_count: number
+}
+
+export interface RevenueSummary {
+  retail_total: number
+  wholesale_total: number
+  grand_total: number
+  retail_pct: number
+  wholesale_pct: number
+  invoice_count: number
+}
+
+export interface RevenueReportResponse {
+  months: MonthlyRevenue[]
+  top_customers: TopCustomer[]
+  summary: RevenueSummary
+  period_months: number
+}
+
+export interface CounterSaleResult {
+  id: number
+  invoice_number: string
+  invoice_date: string
+  customer_id: number
+  customer_name: string
+  grand_total: number
+  amount_paid: number
+  change_due: number
+  payment_id: number
+  payment_method: string
+  payment_status: string
+  line_items: InvoiceLineItem[]
 }

@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, FileText, Users, BookOpen, Building2,
-  Package, RotateCcw, Search, Settings, ChevronLeft, Sun, Moon, X,
+  Package, RotateCcw, Search, Settings, ChevronLeft, Sun, Moon, X, BarChart2, CalendarDays, TrendingUp,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from './ThemeProvider'
@@ -19,6 +19,9 @@ const NAV_ITEMS = [
   { name: 'Inventory', path: '/items', icon: Package },
   { name: 'Returns', path: '/returns', icon: RotateCcw },
   { name: 'Stock Audit', path: '/stock-audit', icon: Search },
+  { name: 'Aging Report', path: '/reports/aging', icon: BarChart2 },
+  { name: 'Daily Summary', path: '/reports/daily', icon: CalendarDays },
+  { name: 'Revenue', path: '/reports/revenue', icon: TrendingUp },
   { name: 'Settings', path: '/settings', icon: Settings },
 ]
 

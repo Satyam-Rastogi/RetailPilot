@@ -3,9 +3,9 @@ import { createPortal } from 'react-dom'
 import { useModalKeyboard } from '../hooks/useModalKeyboard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { X, Search, ChevronDown, UserPlus } from 'lucide-react'
-import { invoiceService, customerService, itemService } from '../services/api'
-import type { CustomerListResponse, ItemListResponse } from '../types/api'
+import { X, Search, ChevronDown, UserPlus, AlertTriangle } from 'lucide-react'
+import { invoiceService, customerService, itemService, ledgerService } from '../services/api'
+import type { CustomerListResponse, ItemListResponse, CustomerLedger } from '../types/api'
 import { cn } from '../lib/utils'
 
 const inputCls = 'w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors'
@@ -418,6 +418,14 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
 
   const selectedCustomer = customers?.find(c => c.id === createForm.customer_id)
   const isWholesale = selectedCustomer?.customer_type === 'Wholesale'
+  const hasCreditLimit = !!selectedCustomer?.credit_limit && selectedCustomer.credit_limit > 0
+
+  const { data: customerLedger } = useQuery<CustomerLedger>({
+    queryKey: ['customerLedger', createForm.customer_id],
+    queryFn: () => ledgerService.getCustomerLedger(createForm.customer_id),
+    enabled: open && hasCreditLimit && createForm.customer_id > 0,
+    staleTime: 30_000,
+  })
 
   const handleCustomerChange = (customerId: number) => {
     setCreateForm(f => ({ ...f, customer_id: customerId }))
@@ -549,6 +557,38 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
               {createError}
             </div>
           )}
+
+          {hasCreditLimit && selectedCustomer && (() => {
+            const limit = selectedCustomer.credit_limit!
+            const used = customerLedger?.total_unpaid ?? 0
+            const newTotal = totals.grandTotal
+            const projectedUsed = used + newTotal
+            const available = limit - used
+            const wouldBreach = projectedUsed > limit
+            const nearLimit = !wouldBreach && projectedUsed > limit * 0.8
+            if (!wouldBreach && !nearLimit) return null
+            return (
+              <div className={cn(
+                'flex items-start gap-3 px-4 py-3 border font-mono text-xs',
+                wouldBreach
+                  ? 'border-danger text-danger bg-danger/5'
+                  : 'border-warning text-warning bg-warning/5'
+              )}>
+                <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                <div className="space-y-0.5">
+                  <div className="uppercase tracking-wider font-bold">
+                    {wouldBreach ? 'Credit Limit Breach' : 'Near Credit Limit'}
+                  </div>
+                  <div className="text-[11px] space-x-4 opacity-90">
+                    <span>Limit: ₹{limit.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                    <span>Outstanding: ₹{used.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                    <span>This Invoice: ₹{newTotal.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                    <span>Available: ₹{available.toLocaleString('en-IN', { maximumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
 
           {/* Customer + Date */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

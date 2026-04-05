@@ -72,6 +72,8 @@ export const companyProfileService = {
 export const customerService = {
   list: (params?: { page?: number; page_size?: number; search?: string; created_after?: string }) =>
     api.get('/customers/', { params }).then(res => res.data),
+  getOutstanding: (params?: { include_zero_balance?: boolean; search?: string; customer_type?: string }) =>
+    api.get('/customers/outstanding/', { params }).then(res => res.data),
   get: (id: number) => api.get(`/customers/${id}`).then(res => {
       const response = res.data;
       return response.data || response;
@@ -150,8 +152,13 @@ export const variantService = {
 }
 
 export const stockAuditService = {
-  list: (params?: { page?: number; page_size?: number; item_id?: number }) =>
-    api.get('/items/stock-audit/', { params }).then(res => res.data),
+  list: (params?: {
+    page?: number
+    page_size?: number
+    item_id?: number
+    delta_direction?: 'in' | 'out'
+    entry_type?: 'sale' | 'return' | 'void' | 'edit' | 'manual'
+  }) => api.get('/items/stock-audit/', { params }).then(res => res.data),
 }
 
 export const invoiceService = {
@@ -204,6 +211,7 @@ export const returnService = {
       const response = res.data;
       return (response && response.data) || response;
     }),
+  delete: (id: number) => api.delete(`/returns/${id}`).then(res => res.data),
 }
 
 export const ledgerService = {
@@ -238,61 +246,17 @@ export const ledgerService = {
     api.delete(`/payments/${paymentId}`).then(res => res.data),
 }
 
-export const wholesaleLedgerService = {
-  getWholesaleLedgers: (dateFrom?: string, dateTo?: string) =>
-    customerService.list({ page_size: 100 }).then(res => {
-      const customers = res.data || []
-      // Filter for wholesale customers only
-      const wholesale = customers.filter((c: any) => c.customer_type === 'Wholesale')
+export const reportService = {
+  getAging: (params?: { customer_type?: string }) =>
+    api.get('/reports/aging/', { params }).then(res => res.data),
+  getDailySummary: (date?: string) =>
+    api.get('/reports/daily-summary/', { params: date ? { date } : undefined }).then(res => res.data),
+  getRevenue: (months?: number) =>
+    api.get('/reports/revenue/', { params: months ? { months } : undefined }).then(res => res.data),
+}
 
-      // Fetch ledger data for each customer in parallel
-      const ledgerPromises = wholesale.map((customer: any) =>
-        ledgerService.getCustomerLedger(customer.id, dateFrom, dateTo).catch(() => null)
-      )
-
-      return Promise.all(ledgerPromises).then(ledgers => {
-        return ledgers.map((ledger: any, index: number) => {
-          const customer = wholesale[index]
-
-          if (!ledger) {
-            return {
-              customer_id: customer.id,
-              customer_name: customer.name,
-              customer_type: customer.customer_type,
-              total_invoiced: 0,
-              total_paid: 0,
-              total_unpaid: 0,
-              last_activity: null,
-              invoice_count: 0,
-              payment_count: 0,
-            }
-          }
-
-          // Find last activity date (most recent invoice or payment)
-          const lastInvoice = ledger.invoices?.[0]
-          const lastPayment = ledger.payments?.[0]
-
-          const lastInvoiceDate = lastInvoice ? new Date(lastInvoice.invoice_date) : null
-          const lastPaymentDate = lastPayment ? new Date(lastPayment.date) : null
-
-          const lastActivity = lastInvoiceDate && lastPaymentDate
-            ? (lastInvoiceDate > lastPaymentDate ? lastInvoiceDate : lastPaymentDate)
-            : (lastInvoiceDate || lastPaymentDate)
-
-          return {
-            customer_id: customer.id,
-            customer_name: customer.name,
-            customer_type: customer.customer_type,
-            total_invoiced: ledger.total_invoiced || 0,
-            total_paid: ledger.total_paid || 0,
-            total_unpaid: ledger.total_unpaid || 0,
-            last_activity: lastActivity ? lastActivity.toISOString() : null,
-            invoice_count: ledger.invoices?.length || 0,
-            payment_count: ledger.payments?.length || 0,
-          }
-        })
-      })
-    }),
+export const counterSaleService = {
+  create: (data: any) => api.post('/invoices/counter-sale/', data).then(res => res.data),
 }
 
 export default api

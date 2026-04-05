@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Plus, Pencil, Trash2, X, FileText } from 'lucide-react'
@@ -21,8 +21,12 @@ export default function LedgerPage() {
   const queryClient = useQueryClient()
   const { formatCurrency } = useSettings()
 
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const dateFrom = searchParams.get('from') ?? ''
+  const dateTo   = searchParams.get('to')   ?? ''
+  const setDateFrom = (v: string) => setSearchParams(p => { const n = new URLSearchParams(p); v ? n.set('from', v) : n.delete('from'); return n }, { replace: true })
+  const setDateTo   = (v: string) => setSearchParams(p => { const n = new URLSearchParams(p); v ? n.set('to', v)   : n.delete('to');   return n }, { replace: true })
+
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerListResponse | null>(null)
 
   const [showCreateInvoice, setShowCreateInvoice] = useState(false)
@@ -276,6 +280,12 @@ export default function LedgerPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate(`/customers/${customerId}/statement`)}
+              className="flex items-center gap-2 px-4 py-2.5 bg-paper text-ink font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-hover active:brutal-shadow-active brutal-focus transition-all"
+            >
+              Statement
+            </button>
             <button
               onClick={() => setShowCreateInvoice(true)}
               className="flex items-center gap-2 px-5 py-2.5 bg-paper text-ink font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-hover active:brutal-shadow-active brutal-focus transition-all"

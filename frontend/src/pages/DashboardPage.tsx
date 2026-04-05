@@ -15,27 +15,16 @@ import { useTheme } from '../components/ThemeProvider'
 import { useSettings } from '../components/SettingsProvider'
 import { CypherCounter } from '../components/CypherCounter'
 import { Sparkline } from '../components/Sparkline'
-import { itemService, invoiceService } from '../services/api'
+import { itemService, invoiceService, reportService } from '../services/api'
 import api from '../services/api'
 import { cn } from '../lib/utils'
 import type { InvoiceListResponse, ItemListResponse } from '../types/api'
 import { CreateInvoiceModal } from '../components/CreateInvoiceModal'
+import { CounterSaleModal } from '../components/CounterSaleModal'
 import { MagneticButton } from '../components/MagneticButton'
 
-// ── Static placeholder for revenue chart (no reporting endpoint yet) ──────────
-// Dates: last 14 days ending today (2026-03-28), formatted as 'Mar 14' etc.
-function buildRevenueData() {
-  const amounts = [12400, 9800, 15200, 8900, 21000, 18500, 24300, 19700, 28100, 22400, 31500, 27800, 35200, 29600]
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
-  const today = new Date()
-  return amounts.map((amount, i) => {
-    const d = new Date(today)
-    d.setDate(d.getDate() - (13 - i))
-    const label = i === 13 ? 'Today' : `${months[d.getMonth()]} ${d.getDate()}`
-    return { date: label, amount }
-  })
-}
-const revenueData = buildRevenueData()
+// ── Placeholder used while revenue data loads ─────────────────────────────────
+const REVENUE_PLACEHOLDER = Array.from({ length: 12 }, (_, i) => ({ date: `M${i + 1}`, amount: 0 }))
 
 // ── Chart container — defers rendering until parent has positive dimensions ───
 function ChartContainer({ children, className }: { children: React.ReactNode; className?: string }) {
@@ -73,6 +62,7 @@ function DashboardPage() {
   const [currentTime, setCurrentTime] = useState(new Date())
   const [hoveredStatusIndex, setHoveredStatusIndex] = useState<number | null>(null)
   const [showCreateInvoice, setShowCreateInvoice] = useState(false)
+  const [showCounterSale, setShowCounterSale] = useState(false)
 
   const getPeriod = (h: number) =>
     h >= 21 || h < 5 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'noon' : 'evening'
@@ -201,6 +191,16 @@ function DashboardPage() {
     queryFn: () => itemService.list({ page_size: 20, low_stock_only: true }),
   })
 
+  const { data: revenueReport } = useQuery({
+    queryKey: ['revenue-dashboard'],
+    queryFn: () => reportService.getRevenue(12),
+    staleTime: 5 * 60_000,
+  })
+
+  const revenueData: { date: string; amount: number }[] = revenueReport
+    ? revenueReport.months.map((m: { month_label: string; total: number }) => ({ date: m.month_label, amount: m.total }))
+    : REVENUE_PLACEHOLDER
+
   const recentInvoices: InvoiceListResponse[] = invoicesData?.data ?? []
   const lowStockItems: ItemListResponse[] = itemsData?.data ?? []
 
@@ -319,7 +319,7 @@ function DashboardPage() {
       {theme === 'light' ? (
         <BarChart data={revenueData} margin={{ top: 20, right: 20, left: 20, bottom: 40 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--theme-line-subtle)" />
-          <XAxis dataKey="date" stroke="var(--theme-ink-light)" fontSize={12} tickLine={false} axisLine={false} tickMargin={12} minTickGap={20} label={{ value: 'DAYS -->', position: 'insideBottom', offset: -25, fill: 'var(--theme-ink-light)', fontSize: 13, fontFamily: 'JetBrains Mono', fontWeight: 'bold' }} />
+          <XAxis dataKey="date" stroke="var(--theme-ink-light)" fontSize={12} tickLine={false} axisLine={false} tickMargin={12} minTickGap={20} label={{ value: 'MONTHS -->', position: 'insideBottom', offset: -25, fill: 'var(--theme-ink-light)', fontSize: 13, fontFamily: 'JetBrains Mono', fontWeight: 'bold' }} />
           <YAxis stroke="var(--theme-ink-light)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={formatYAxis} tickMargin={12} label={{ value: 'Revenue -->', angle: -90, position: 'insideLeft', offset: -15, fill: 'var(--theme-ink-light)', fontSize: 13, fontFamily: 'JetBrains Mono', fontWeight: 'bold', style: { textAnchor: 'middle' } }} />
           <Tooltip
             contentStyle={{ backgroundColor: 'var(--theme-surface)', border: '1px solid var(--theme-line)', borderRadius: '0', color: 'var(--theme-ink)' }}
@@ -333,7 +333,7 @@ function DashboardPage() {
       ) : (
         <AreaChart data={revenueData} margin={{ top: 20, right: 20, left: 20, bottom: 40 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--theme-line)" />
-          <XAxis dataKey="date" stroke="var(--theme-ink-light)" fontSize={12} tickLine={false} axisLine={false} tickMargin={12} minTickGap={20} label={{ value: 'DAYS -->', position: 'insideBottom', offset: -25, fill: 'var(--theme-ink-light)', fontSize: 13, fontFamily: 'JetBrains Mono', fontWeight: 'bold' }} />
+          <XAxis dataKey="date" stroke="var(--theme-ink-light)" fontSize={12} tickLine={false} axisLine={false} tickMargin={12} minTickGap={20} label={{ value: 'MONTHS -->', position: 'insideBottom', offset: -25, fill: 'var(--theme-ink-light)', fontSize: 13, fontFamily: 'JetBrains Mono', fontWeight: 'bold' }} />
           <YAxis stroke="var(--theme-ink-light)" fontSize={12} tickLine={false} axisLine={false} tickFormatter={formatYAxis} tickMargin={12} label={{ value: 'Revenue -->', angle: -90, position: 'insideLeft', offset: -15, fill: 'var(--theme-ink-light)', fontSize: 13, fontFamily: 'JetBrains Mono', fontWeight: 'bold', style: { textAnchor: 'middle' } }} />
           <defs>
             <linearGradient id="colorAmountModal" x1="0" y1="0" x2="0" y2="1">
@@ -449,14 +449,22 @@ function DashboardPage() {
           </motion.div>
           <div className="w-16 h-0.5 bg-accent mt-4" />
         </div>
-        <MagneticButton strength={0.5}>
+        <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowCreateInvoice(true)}
-            className="flex items-center gap-2 px-6 py-3 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all shrink-0"
+            onClick={() => setShowCounterSale(true)}
+            className="flex items-center gap-2 px-4 py-2.5 brutal-border font-mono text-xs uppercase tracking-widest hover:bg-ink hover:text-surface transition-colors brutal-focus shrink-0"
           >
-            <Plus className="w-4 h-4" /> New Invoice
+            <Plus className="w-3.5 h-3.5" /> Counter Sale
           </button>
-        </MagneticButton>
+          <MagneticButton strength={0.5}>
+            <button
+              onClick={() => setShowCreateInvoice(true)}
+              className="flex items-center gap-2 px-6 py-3 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all shrink-0"
+            >
+              <Plus className="w-4 h-4" /> New Invoice
+            </button>
+          </MagneticButton>
+        </div>
       </header>
 
       {/* ── KPI Grid ───────────────────────────────────────────────────────── */}
@@ -782,12 +790,12 @@ function DashboardPage() {
                         </div>
                         <div className="p-6 border border-line bg-paper brutal-shadow-hover transition-transform hover:-translate-y-1 cursor-default">
                           <span className="text-xs uppercase font-mono tracking-widest text-ink-light block mb-3">Projected Trajectory</span>
-                          <p className="text-3xl font-display font-bold text-accent mb-1">{formatCurrencyCompact(revenueData[13].amount * 1.18)}</p>
-                          <p className="text-[10px] font-mono uppercase tracking-widest text-ink-light mb-4">Estimated next 7 days</p>
+                          <p className="text-3xl font-display font-bold text-accent mb-1">{formatCurrencyCompact((revenueData[revenueData.length - 1]?.amount ?? 0) * 1.18)}</p>
+                          <p className="text-[10px] font-mono uppercase tracking-widest text-ink-light mb-4">Estimated next month</p>
                           <div className="space-y-2">
                             <div className="flex justify-between font-mono text-xs text-ink-light border-b border-line pb-2">
-                              <span>Avg Daily (14d)</span>
-                              <span className="font-bold text-ink">{formatCurrencyCompact(revenueData.reduce((s, d) => s + d.amount, 0) / revenueData.length)}</span>
+                              <span>Avg Monthly (12M)</span>
+                              <span className="font-bold text-ink">{formatCurrencyCompact(revenueData.reduce((s: number, d: { amount: number }) => s + d.amount, 0) / (revenueData.length || 1))}</span>
                             </div>
                             <div className="flex justify-between font-mono text-xs text-ink-light">
                               <span>7-Day Forecast</span>
@@ -867,6 +875,7 @@ function DashboardPage() {
       )}
 
       <CreateInvoiceModal open={showCreateInvoice} onClose={() => setShowCreateInvoice(false)} />
+      <CounterSaleModal open={showCounterSale} onClose={() => setShowCounterSale(false)} />
     </div>
   )
 }
