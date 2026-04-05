@@ -51,22 +51,27 @@ A FIFO-based shop management system for small Indian retail and wholesale busine
 GET  /api/v1/invoices/summary/              # KPI counts + outstanding totals (dashboard)
 GET  /api/v1/invoices/                      # list with filters: payment_status, overdue_only, customer_name, date range
 POST /api/v1/invoices/                      # create invoice + line items; validates stock before deducting
+POST /api/v1/invoices/counter-sale/         # invoice + immediate payment in one transaction (retail counter)
 GET  /api/v1/invoices/{id}                  # detail with line items, payments, returns
-DELETE /api/v1/invoices/{id}                # blocked if amount_paid > 0
+DELETE /api/v1/invoices/{id}               # blocked if amount_paid > 0
+GET  /api/v1/invoices/export/               # streaming CSV export with same filters as list
 
 GET  /api/v1/payments/customer/{id}/ledger  # FIFO ledger: invoices + payments + totals with date filter
 POST /api/v1/payments/                      # create payment; runs FIFO allocation automatically
-DELETE /api/v1/payments/{id}                # reverses allocations, resets invoice statuses
+DELETE /api/v1/payments/{id}               # reverses allocations, resets invoice statuses
 
 GET  /api/v1/customers/outstanding/         # all customers: outstanding, overdue amount/count, oldest unpaid date (one SQL aggregate)
 
 GET  /api/v1/reports/aging/                 # unpaid invoices per customer bucketed by days overdue (Current/1-30/31-60/61-90/90+)
+GET  /api/v1/reports/daily-summary/         # invoices + collections for a date split by customer type and payment method
+GET  /api/v1/reports/revenue/               # monthly revenue by customer type for a configurable lookback period
 
 GET  /api/v1/items/                         # list with search + low_stock_only filter
 POST /api/v1/items/{id}/adjust-stock        # manual adjustment with reason; writes StockAudit row
 GET  /api/v1/items/stock-audit/             # paginated audit log
 
 POST /api/v1/returns/                       # create return; validates qty, restores stock, creates credit_note payment
+DELETE /api/v1/returns/{id}                # reverses FIFO allocation + stock + deletes credit_note payment
 ```
 
 ## Planned: AI Chatbot
@@ -143,13 +148,15 @@ npm run dev       # runs on http://localhost:5173
 
 ### Done
 
-- Invoice management (create, view, delete) with stock validation
+- Invoice management (create, view, edit, delete) with stock validation
 - FIFO payment allocation engine with full reversal on delete
 - Per-customer ledger with date range filtering (invoices + payments both filtered)
 - Return receipts with quantity validation against original invoice
+- Delete return: `DELETE /returns/{id}` reverses FIFO allocations, credit note, and stock
 - Return credits auto-allocated via FIFO into customer payment history
 - Per-item GST rate (0/5/12/18/28%) with CGST/SGST breakdown grouped by rate
 - HSN-wise tax summary table on invoice detail and print layout
+- GST-compliant PDF invoice: two print templates — full GST Invoice (B2B, IGST/CGST+SGST routing based on state codes, GSTINs, place of supply, amount in words) and thermal Receipt (B2C)
 - Stock management: adjust stock with reason, full audit log
 - Soft delete for items (`is_active`) — history preserved
 - Walk-in Customer auto-seeded (retail counter sales without creating a named customer)
@@ -161,29 +168,30 @@ npm run dev       # runs on http://localhost:5173
 - `due_date` on invoices, auto-calculated from `customer.credit_days`
 - Dashboard KPI cards via `/invoices/summary/` (one SQL aggregate query)
 - Low-stock items filtered at backend (`?low_stock_only=true`)
-- GST invoice print layout with clean white styling
 - Keyboard accessibility: Escape/Tab/Enter/Arrow with focus trap on all modals
 - GSTIN format validation (regex) on customer, supplier, and company profile
-- Alembic migration infrastructure with initial schema migration
+- Alembic migration infrastructure (all schema changes version-controlled)
 - Gross margin % column on items table (retail gross margin, color-coded)
 - Low-stock badge on sidebar Inventory nav item (live count, refreshes every 60s)
 - "New Invoice" button on customer LedgerPage (pre-fills modal with that customer)
 - HSN/SAC code required when `gst_rate > 0` on invoice line items (API validation)
 - PO reference number on invoices (field, modal input, detail view, print)
 - Global outstanding receivables: `GET /customers/outstanding/` (single SQL aggregate, no N+1) + Receivables page with overdue flags, type filter, amount filter, sortable columns, "Show Settled" toggle
-- Credit limit per customer: `credit_limit` field on CustomerModel + breach/near-limit warning banner in invoice creation modal
-- Aging report: `GET /reports/aging/` bucketing unpaid invoices into Current/1–30/31–60/61–90/90+ day buckets + `AgingReportPage` with summary tiles and customer table
-- One-step counter sale: `POST /invoices/counter-sale/` (invoice + payment in one transaction) + `CounterSaleModal` with Walk-in default, payment method, amount received, change due display, and success receipt overlay
-- Daily sales summary: `GET /reports/daily-summary/` + `DailySummaryPage` showing invoices and collections split by customer type and payment method, with quick-date navigation
+- Credit limit per customer: `credit_limit` field + breach/near-limit warning banner in invoice creation modal
+- Aging report: `GET /reports/aging/` bucketing unpaid invoices into Current/1–30/31–60/61–90/90+ day buckets + summary tiles + sortable table
+- One-step counter sale: `POST /invoices/counter-sale/` + `CounterSaleModal` with Walk-in default, payment method, change due display, success receipt overlay
+- Daily sales summary: `GET /reports/daily-summary/` + `DailySummaryPage` split by customer type and payment method with quick-date navigation
+- Revenue analytics: `GET /reports/revenue/` + `RevenueAnalyticsPage` — stacked bar chart (Recharts), retail/wholesale split, top-10 customers by revenue
+- Customer statement: `CustomerStatementPage` — unified invoice+payment timeline, opening/closing balance, printable PDF
+- Item categories: `category` field on items with text input in form modal
+- Supplier↔Item linkage: `supplier_id` FK on items, supplier dropdown in item form
+- Bulk invoice CSV export: `GET /invoices/export/` streaming with active filters
+- URL-persistent filter state: all list/filter pages use `useSearchParams` — filters, search, and pagination survive browser back/refresh and are shareable via URL
 
-### Open (Next Sprints)
+### Open
 
-- Revenue analytics dashboard — retail vs wholesale split, monthly trend (P2-1) ← **Sprint 5**
-- AI chatbot: Claude-powered agent via web UI (text + voice) and Telegram — can perform any action available in the frontend
-- One-step retail counter sale (invoice + payment in single flow) (RET-2)
-- Daily sales summary by payment method (RET-4)
-- Revenue reporting / analytics dashboard (P2-1)
-- GST-compliant PDF: place of supply, amount in words, IGST routing (P2-2)
+- Soft delete for invoices/payments/returns (`deleted_at` timestamp + filter) (P2-4)
+- AI chatbot: Claude-powered agent via web UI (text + voice) and Telegram (AI-1/2/3)
 
 ## Project Structure
 
