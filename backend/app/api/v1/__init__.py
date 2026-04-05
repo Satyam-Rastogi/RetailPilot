@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import company_profile, customers, suppliers, items, invoices, stock, returns, payments
+from app.api.v1.endpoints import company_profile, customers, suppliers, items, invoices, stock, returns, payments, reports
 
 api_router = APIRouter()
 
@@ -11,3 +11,4 @@ api_router.include_router(invoices.router, prefix="/invoices", tags=["Invoices"]
 api_router.include_router(stock.router, tags=["Stock"])
 api_router.include_router(returns.router, prefix="/returns", tags=["Returns"])
 api_router.include_router(payments.router, prefix="/payments", tags=["Payments"])
+api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])

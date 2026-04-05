@@ -41,6 +41,9 @@ def _build_list_response(item: ItemModel) -> ItemListResponse:
     variant_type=item.variant_type,
     hsn_sac_code=item.hsn_sac_code,
     gst_rate=item.gst_rate,
+    category=item.category,
+    supplier_id=item.supplier_id,
+    supplier_name=item.supplier.name if item.supplier else None,
     variants_count=len(item.variants),
     variants=[ItemVariantResponse.model_validate(v) for v in item.variants],
   )
@@ -54,9 +57,11 @@ def get_items(
   page_size: int = Query(20, ge=1, le=1000),
   search: Optional[str] = None,
   low_stock_only: bool = Query(False, description="Return only items that are at or below their low-stock threshold"),
+  category: Optional[str] = Query(None, description="Filter by category (exact match)"),
+  supplier_id: Optional[int] = Query(None, description="Filter by supplier ID"),
   db: Session = Depends(get_db),
 ):
-  query = db.query(ItemModel).options(joinedload(ItemModel.variants)).filter(ItemModel.is_active == True)
+  query = db.query(ItemModel).options(joinedload(ItemModel.variants), joinedload(ItemModel.supplier)).filter(ItemModel.is_active == True)
 
   if search:
     query = query.filter(
@@ -64,6 +69,12 @@ def get_items(
       ItemModel.sku.ilike(f"%{search}%") |
       ItemModel.brand_name.ilike(f"%{search}%")
     )
+
+  if category:
+    query = query.filter(ItemModel.category == category)
+
+  if supplier_id:
+    query = query.filter(ItemModel.supplier_id == supplier_id)
 
   if low_stock_only:
     # Filter at DB level for non-variant items (fast path).
@@ -97,11 +108,39 @@ def get_stock_audits(
   page: int = Query(1, ge=1),
   page_size: int = Query(20, ge=1, le=100),
   item_id: Optional[int] = Query(None),
+  delta_direction: Optional[str] = Query(None, description="'in' (positive delta) or 'out' (negative delta)"),
+  entry_type: Optional[str] = Query(None, description="sale | return | void | edit | manual"),
   db: Session = Depends(get_db),
 ):
+  from sqlalchemy import or_
   query = db.query(StockAuditModel).order_by(StockAuditModel.created_at.desc())
   if item_id:
     query = query.filter(StockAuditModel.item_id == item_id)
+  if delta_direction == 'in':
+    query = query.filter(StockAuditModel.delta > 0)
+  elif delta_direction == 'out':
+    query = query.filter(StockAuditModel.delta < 0)
+  if entry_type == 'sale':
+    query = query.filter(StockAuditModel.reason.ilike('sold%'))
+  elif entry_type == 'return':
+    query = query.filter(StockAuditModel.reason.ilike('return%'))
+  elif entry_type == 'void':
+    query = query.filter(StockAuditModel.reason.ilike('%voided%'))
+  elif entry_type == 'edit':
+    query = query.filter(or_(
+      StockAuditModel.reason.ilike('qty%'),
+      StockAuditModel.reason.ilike('item added%'),
+      StockAuditModel.reason.ilike('item removed%'),
+    ))
+  elif entry_type == 'manual':
+    query = query.filter(
+      ~StockAuditModel.reason.ilike('sold%'),
+      ~StockAuditModel.reason.ilike('return%'),
+      ~StockAuditModel.reason.ilike('%voided%'),
+      ~StockAuditModel.reason.ilike('qty%'),
+      ~StockAuditModel.reason.ilike('item added%'),
+      ~StockAuditModel.reason.ilike('item removed%'),
+    )
 
   data, total_items, total_pages = paginate_query(query, page, page_size)
 

@@ -309,6 +309,73 @@ def create_return(return_data: ReturnReceiptCreate, db: Session = Depends(get_db
     }
 
 
+@router.delete("/{return_id}", response_model=dict)
+def delete_return(return_id: int, db: Session = Depends(get_db)):
+    """
+    Delete a return receipt and fully reverse its effects:
+    1. Reverse stock additions for every returned line item
+    2. Reverse FIFO allocations from the associated credit note payment
+    3. Delete the credit note payment
+    4. Delete the return receipt and its line items
+    """
+    db_return = db.query(ReturnReceiptModel).filter(ReturnReceiptModel.id == return_id).first()
+    if not db_return:
+        raise HTTPException(status_code=404, detail="Return not found")
+
+    # ── Find the associated credit note payment ───────────────────────────────
+    invoice_number = db_return.invoice.invoice_number if db_return.invoice else None
+    if invoice_number:
+        credit_payment = db.query(PaymentModel).filter(
+            PaymentModel.customer_id == db_return.customer_id,
+            PaymentModel.payment_method == 'credit_note',
+            PaymentModel.amount == db_return.total_credit,
+            PaymentModel.notes.contains(invoice_number),
+        ).first()
+    else:
+        credit_payment = db.query(PaymentModel).filter(
+            PaymentModel.customer_id == db_return.customer_id,
+            PaymentModel.payment_method == 'credit_note',
+            PaymentModel.notes.contains(f"Return #{return_id}"),
+        ).first()
+
+    if credit_payment:
+        # Reverse all FIFO allocations made from this credit note
+        allocations = db.query(PaymentAllocationModel).filter(
+            PaymentAllocationModel.payment_id == credit_payment.id
+        ).all()
+        for alloc in allocations:
+            inv = db.query(InvoiceModel).filter(InvoiceModel.id == alloc.invoice_id).first()
+            if inv:
+                inv.amount_paid = max(0.0, float(inv.amount_paid) - float(alloc.allocated_amount))
+                if inv.amount_paid <= 0:
+                    inv.payment_status = PaymentStatus.UNPAID
+                elif inv.amount_paid >= inv.grand_total:
+                    inv.payment_status = PaymentStatus.PAID
+                else:
+                    inv.payment_status = PaymentStatus.PARTIALLY_PAID
+            db.delete(alloc)
+        db.delete(credit_payment)
+
+    # ── Reverse stock and delete line items ───────────────────────────────────
+    line_items = db.query(ReturnLineItemModel).filter(
+        ReturnLineItemModel.return_receipt_id == return_id
+    ).all()
+    for li in line_items:
+        item = db.query(ItemModel).filter(ItemModel.id == li.item_id).first()
+        if item:
+            item.current_stock_quantity = max(0, item.current_stock_quantity - li.quantity_returned)
+        # Remove associated stock audit entries
+        db.query(StockAuditModel).filter(
+            StockAuditModel.item_id == li.item_id,
+            StockAuditModel.reason.like(f"%#{db_return.id}%"),
+        ).delete(synchronize_session=False)
+        db.delete(li)
+
+    db.delete(db_return)
+    db.commit()
+    return {'detail': f'Return #{return_id} deleted and all effects reversed'}
+
+
 @router.put("/{return_id}", response_model=dict)
 def update_return(return_id: int, return_data: dict, db: Session = Depends(get_db)):
     """

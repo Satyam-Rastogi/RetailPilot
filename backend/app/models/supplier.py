@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, Text, Integer, DateTime
+from sqlalchemy.orm import relationship
 from app.db.session import Base
 from datetime import datetime
 
@@ -17,3 +18,5 @@ class SupplierModel(Base):
   notes = Column(Text, nullable=True)
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
   updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+
+  items = relationship("ItemModel", back_populates="supplier")

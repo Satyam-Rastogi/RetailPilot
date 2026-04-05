@@ -51,6 +51,8 @@ class ItemBase(BaseModel):
   variant_type: Optional[str] = None
   hsn_sac_code: Optional[str] = None
   gst_rate: Optional[float] = None   # GST rate in percent (0, 5, 12, 18, 28)
+  category: Optional[str] = None
+  supplier_id: Optional[int] = None
 
 
 class ItemCreate(ItemBase):
@@ -87,5 +89,8 @@ class ItemListResponse(BaseModel):
   variant_type: Optional[str] = None
   hsn_sac_code: Optional[str] = None
   gst_rate: Optional[float] = None
+  category: Optional[str] = None
+  supplier_id: Optional[int] = None
+  supplier_name: Optional[str] = None
   variants_count: int = 0
   variants: List[ItemVariantResponse] = []

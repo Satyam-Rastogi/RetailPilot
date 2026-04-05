@@ -1,14 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timedelta
+import csv
+import io
 from app.db.session import get_db
 from app.models.invoice import InvoiceModel, InvoiceLineItemModel, PaymentStatus
 from app.models.customer import CustomerModel
 from app.models.item import ItemModel
+from app.models.payment import PaymentModel, PaymentAllocationModel
 from app.models.invoice_sequence import InvoiceSequenceModel
 from app.models.company_profile import CompanyProfileModel
+from app.models.return_receipt import ReturnReceiptModel, ReturnLineItemModel
+from app.models.stock_audit import StockAuditModel
 from app.schemas.invoice import (
   InvoiceLineItemCreate,
 )
@@ -163,6 +169,79 @@ def get_invoices_summary(db: Session = Depends(get_db)):
   }
 
 
+@router.get("/export/", response_class=StreamingResponse)
+def export_invoices_csv(
+  date_from: Optional[str] = Query(None),
+  date_to: Optional[str] = Query(None),
+  customer_id: Optional[int] = Query(None),
+  customer_name: Optional[str] = Query(None),
+  payment_status: Optional[str] = Query(None),
+  overdue_only: Optional[bool] = Query(None),
+  db: Session = Depends(get_db),
+):
+  """Export invoices as CSV with the same filters as the list endpoint."""
+  query = db.query(InvoiceModel).options(joinedload(InvoiceModel.customer)).join(CustomerModel)
+
+  if date_from:
+    try:
+      query = query.filter(InvoiceModel.invoice_date >= datetime.strptime(date_from, "%Y-%m-%d"))
+    except ValueError:
+      pass
+  if date_to:
+    try:
+      query = query.filter(InvoiceModel.invoice_date <= datetime.strptime(date_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59))
+    except ValueError:
+      pass
+  if customer_id:
+    query = query.filter(InvoiceModel.customer_id == customer_id)
+  if customer_name:
+    query = query.filter(CustomerModel.name.ilike(f"%{customer_name}%"))
+  if payment_status:
+    status_map = {'paid': PaymentStatus.PAID, 'partial': PaymentStatus.PARTIALLY_PAID, 'unpaid': PaymentStatus.UNPAID}
+    mapped = status_map.get(payment_status.lower())
+    if mapped:
+      query = query.filter(InvoiceModel.payment_status == mapped)
+  if overdue_only:
+    now = datetime.utcnow()
+    query = query.filter(InvoiceModel.due_date != None, InvoiceModel.due_date < now, InvoiceModel.payment_status != PaymentStatus.PAID)
+
+  invoices = query.order_by(InvoiceModel.invoice_date.desc()).all()
+
+  output = io.StringIO()
+  writer = csv.writer(output)
+  writer.writerow([
+    'Invoice Number', 'Invoice Date', 'Due Date',
+    'Customer', 'Customer Type', 'PO Number',
+    'Sub Total', 'Discount', 'Tax', 'Grand Total',
+    'Amount Paid', 'Outstanding', 'Status',
+  ])
+  for inv in invoices:
+    outstanding = float(inv.grand_total) - float(inv.amount_paid)
+    writer.writerow([
+      inv.invoice_number,
+      inv.invoice_date.strftime('%Y-%m-%d'),
+      inv.due_date.strftime('%Y-%m-%d') if inv.due_date else '',
+      inv.customer.name if inv.customer else '',
+      inv.customer.customer_type if inv.customer else '',
+      inv.po_number or '',
+      round(float(inv.sub_total), 2),
+      round(float(inv.discount_amount or 0), 2),
+      round(float(inv.total_tax_amount or 0), 2),
+      round(float(inv.grand_total), 2),
+      round(float(inv.amount_paid), 2),
+      round(outstanding, 2),
+      inv.payment_status.value,
+    ])
+
+  output.seek(0)
+  filename = f"invoices_{datetime.utcnow().strftime('%Y%m%d')}.csv"
+  return StreamingResponse(
+    iter([output.getvalue()]),
+    media_type='text/csv',
+    headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+  )
+
+
 @router.get("/{invoice_id}", response_model=dict)
 def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
   invoice = db.query(InvoiceModel).options(joinedload(InvoiceModel.customer)).filter(InvoiceModel.id == invoice_id).first()
@@ -203,6 +282,9 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
     'customer_id': invoice.customer_id,
     'customer_name': invoice.customer.name if invoice.customer else None,
     'customer_type': invoice.customer.customer_type if invoice.customer else None,
+    'customer_gstin': invoice.customer.gstin if invoice.customer else None,
+    'customer_address': invoice.customer.address if invoice.customer else None,
+    'customer_phone': invoice.customer.phone_number if invoice.customer else None,
     'discount_type': invoice.discount_type,
     'discount_amount': invoice.discount_amount,
     'tax_rate': invoice.tax_rate,
@@ -376,6 +458,12 @@ def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
     )
     db.add(line_item)
     db_item.current_stock_quantity -= item['quantity']
+    db.add(StockAuditModel(
+      item_id=db_item.id,
+      delta=-item['quantity'],
+      delta_after=db_item.current_stock_quantity,
+      reason=f"Sold — Invoice #{db_invoice.invoice_number}",
+    ))
 
   db.commit()
   db.refresh(db_invoice)
@@ -413,6 +501,199 @@ def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
   }
 
 
+@router.post("/counter-sale/", response_model=dict)
+def create_counter_sale(invoice_data: dict, db: Session = Depends(get_db)):
+  """
+  One-step counter sale: creates an invoice and immediately records a payment
+  in a single transaction. Intended for walk-in / retail counter sales.
+
+  Extra fields vs regular invoice creation:
+    - payment_method: str  (cash/upi/card/cheque/bank_transfer)
+    - amount_paid: float   (amount tendered; may exceed grand_total → change_due)
+  """
+  payment_method = invoice_data.pop('payment_method', 'cash')
+  amount_paid = float(invoice_data.pop('amount_paid', 0))
+
+  # ── Resolve customer ───────────────────────────────────────────────────────
+  customer = None
+  if invoice_data.get('new_customer'):
+    normalized_data = normalize_customer_input(invoice_data['new_customer'])
+    new_customer_schema = CustomerCreate(**normalized_data)
+    customer = CustomerModel(**new_customer_schema.model_dump())
+    db.add(customer)
+    db.flush()
+    db.refresh(customer)
+  elif invoice_data.get('customer_id'):
+    customer = db.query(CustomerModel).filter(CustomerModel.id == invoice_data['customer_id']).first()
+    if not customer:
+      raise HTTPException(status_code=404, detail="Customer not found")
+  else:
+    raise HTTPException(status_code=400, detail="Either customer_id or new_customer must be provided")
+
+  # ── Tax rate ───────────────────────────────────────────────────────────────
+  tax_rate = 18.0
+  if invoice_data.get('tax_rate') is not None:
+    tax_rate = float(invoice_data['tax_rate'])
+  else:
+    profile = db.query(CompanyProfileModel).first()
+    if profile and profile.default_tax_rate is not None:
+      tax_rate = profile.default_tax_rate
+
+  # ── Calculate totals ───────────────────────────────────────────────────────
+  line_items_raw = invoice_data.get('line_items', [])
+  item_gst_map: dict = {}
+  for li in line_items_raw:
+    item_id = li.get('item_id')
+    if item_id and li.get('gst_rate') is None:
+      db_item_for_gst = db.query(ItemModel).filter(ItemModel.id == item_id).first()
+      if db_item_for_gst:
+        item_gst_map[item_id] = db_item_for_gst.gst_rate
+
+  calculation = InvoiceCalculationService.calculate_invoice_totals(
+    line_items=[
+      {
+        "item_id": li.get('item_id'),
+        "quantity": li.get('quantity'),
+        "price": li.get('price'),
+        "discount_amount": li.get('discount_amount'),
+        "discount_type": li.get('discount_type', 'amount'),
+        "gst_rate": li.get('gst_rate') if li.get('gst_rate') is not None else item_gst_map.get(li.get('item_id')),
+      }
+      for li in line_items_raw
+    ],
+    discount_type=invoice_data.get('discount_type', 'amount'),
+    discount_amount=invoice_data.get('discount_amount'),
+    tax_rate=tax_rate
+  )
+
+  grand_total = calculation["grand_total"]
+
+  if amount_paid < grand_total:
+    raise HTTPException(
+      status_code=400,
+      detail=f"Amount paid (₹{amount_paid:.2f}) is less than invoice total (₹{grand_total:.2f})"
+    )
+
+  # ── Invoice number ─────────────────────────────────────────────────────────
+  current_year = datetime.utcnow().year
+  sequence_record = db.query(InvoiceSequenceModel).filter(InvoiceSequenceModel.year == current_year).first()
+  if not sequence_record:
+    sequence_record = InvoiceSequenceModel(year=current_year, next_number=1)
+    db.add(sequence_record)
+    db.flush()
+  else:
+    sequence_record.next_number += 1
+    db.flush()
+
+  customer_type = customer.customer_type or 'Retail'
+  invoice_number = generate_invoice_number(current_year, sequence_record.next_number, customer_type)
+
+  invoice_date_str = invoice_data.get('invoice_date') or datetime.utcnow().isoformat()
+  invoice_date = datetime.fromisoformat(invoice_date_str.replace('Z', '+00:00'))
+
+  # ── Create invoice ─────────────────────────────────────────────────────────
+  db_invoice = InvoiceModel(
+    invoice_number=invoice_number,
+    invoice_date=invoice_date,
+    due_date=None,  # counter sales are always immediate
+    customer_id=customer.id,
+    discount_type=invoice_data.get('discount_type', 'amount'),
+    discount_amount=invoice_data.get('discount_amount'),
+    tax_rate=tax_rate,
+    sub_total=calculation["sub_total"],
+    total_tax_amount=calculation["tax_amount"],
+    grand_total=grand_total,
+    amount_paid=0,
+    payment_status=PaymentStatus.UNPAID.value,
+    notes=invoice_data.get('notes'),
+  )
+  db.add(db_invoice)
+  db.flush()
+
+  # Validate stock
+  for item in line_items_raw:
+    db_item = db.query(ItemModel).filter(ItemModel.id == item['item_id']).first()
+    if not db_item:
+      raise HTTPException(status_code=404, detail=f"Item with id {item['item_id']} not found")
+    if db_item.current_stock_quantity < item['quantity']:
+      raise HTTPException(status_code=400, detail=f"Insufficient stock for item {db_item.item_name}")
+
+  # Deduct stock + create line items
+  for item in line_items_raw:
+    db_item = db.query(ItemModel).filter(ItemModel.id == item['item_id']).first()
+    line_item = InvoiceLineItemModel(
+      invoice_id=db_invoice.id,
+      item_id=item['item_id'],
+      quantity=item['quantity'],
+      price=item['price'],
+      discount_amount=item.get('discount_amount'),
+      discount_type=item.get('discount_type', 'amount'),
+      gst_rate=item.get('gst_rate') if item.get('gst_rate') is not None else db_item.gst_rate,
+    )
+    db.add(line_item)
+    db_item.current_stock_quantity -= item['quantity']
+    db.add(StockAuditModel(
+      item_id=db_item.id,
+      delta=-item['quantity'],
+      delta_after=db_item.current_stock_quantity,
+      reason=f"Sold — Counter Sale #{db_invoice.invoice_number}",
+    ))
+
+  db.flush()
+
+  # ── Immediate payment (allocate full invoice amount only) ──────────────────
+  allocation = PaymentAllocationModel(
+    payment_id=None,  # set after payment flush
+    invoice_id=db_invoice.id,
+    allocated_amount=grand_total,
+  )
+  payment = PaymentModel(
+    customer_id=customer.id,
+    date=invoice_date,
+    amount=amount_paid,
+    payment_method=payment_method,
+    credit_balance=round(amount_paid - grand_total, 2) if amount_paid > grand_total else 0,
+    notes=f"Counter sale — {invoice_number}",
+  )
+  db.add(payment)
+  db.flush()
+
+  allocation.payment_id = payment.id
+  db.add(allocation)
+
+  db_invoice.amount_paid = grand_total
+  db_invoice.payment_status = PaymentStatus.PAID
+
+  db.commit()
+  db.refresh(db_invoice)
+
+  change_due = round(amount_paid - grand_total, 2)
+
+  return {
+    'id': db_invoice.id,
+    'invoice_number': db_invoice.invoice_number,
+    'invoice_date': db_invoice.invoice_date.isoformat(),
+    'customer_id': db_invoice.customer_id,
+    'customer_name': customer.name,
+    'grand_total': db_invoice.grand_total,
+    'amount_paid': amount_paid,
+    'change_due': change_due,
+    'payment_id': payment.id,
+    'payment_method': payment_method,
+    'payment_status': db_invoice.payment_status.value,
+    'line_items': [
+      {
+        'item_id': li.item_id,
+        'item_name': li.item.item_name if li.item else None,
+        'quantity': li.quantity,
+        'price': li.price,
+        'total': li.price * li.quantity - (li.discount_amount or 0),
+      }
+      for li in db_invoice.line_items
+    ],
+  }
+
+
 @router.delete("/{invoice_id}")
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
     db_invoice = db.query(InvoiceModel).filter(InvoiceModel.id == invoice_id).first()
@@ -429,6 +710,12 @@ def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
         item = db.query(ItemModel).filter(ItemModel.id == line_item.item_id).first()
         if item:
             item.current_stock_quantity += line_item.quantity
+            db.add(StockAuditModel(
+                item_id=item.id,
+                delta=line_item.quantity,
+                delta_after=item.current_stock_quantity,
+                reason=f"Invoice voided — #{db_invoice.invoice_number}",
+            ))
 
     db.delete(db_invoice)
     db.commit()
@@ -475,11 +762,29 @@ def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depends(ge
 
     new_line_items = invoice_data.get('line_items', [])
 
+    new_item_ids = {li.get('item_id') for li in new_line_items if li.get('item_id')}
     for item_id, old_li in old_line_item_map.items():
-        if item_id not in [li.get('item_id') for li in new_line_items if li.get('item_id')]:
+        if item_id not in new_item_ids:
             item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
             if item:
-                item.current_stock_quantity += old_li.quantity
+                # P4-3: only restore stock not already restored by returns
+                already_returned = db.query(
+                    func.coalesce(func.sum(ReturnLineItemModel.quantity_returned), 0)
+                ).filter(
+                    ReturnLineItemModel.item_id == item_id,
+                    ReturnLineItemModel.return_receipt_id.in_(
+                        db.query(ReturnReceiptModel.id).filter(ReturnReceiptModel.invoice_id == invoice_id)
+                    )
+                ).scalar() or 0
+                net_restore = max(0, old_li.quantity - already_returned)
+                item.current_stock_quantity += net_restore
+                if net_restore > 0:
+                    db.add(StockAuditModel(
+                        item_id=item.id,
+                        delta=net_restore,
+                        delta_after=item.current_stock_quantity,
+                        reason=f"Item removed from Invoice #{db_invoice.invoice_number}",
+                    ))
             db.delete(old_li)
 
     for new_li in new_line_items:
@@ -500,8 +805,20 @@ def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depends(ge
                         if item.current_stock_quantity < quantity_diff:
                             raise HTTPException(status_code=400, detail=f"Insufficient stock for item {item.item_name}")
                         item.current_stock_quantity -= quantity_diff
+                        db.add(StockAuditModel(
+                            item_id=item.id,
+                            delta=-quantity_diff,
+                            delta_after=item.current_stock_quantity,
+                            reason=f"Qty increased on Invoice #{db_invoice.invoice_number}",
+                        ))
                     else:
                         item.current_stock_quantity += abs(quantity_diff)
+                        db.add(StockAuditModel(
+                            item_id=item.id,
+                            delta=abs(quantity_diff),
+                            delta_after=item.current_stock_quantity,
+                            reason=f"Qty reduced on Invoice #{db_invoice.invoice_number}",
+                        ))
 
             old_li.quantity = new_quantity
             old_li.price = new_price
@@ -517,6 +834,12 @@ def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depends(ge
                 raise HTTPException(status_code=400, detail=f"Insufficient stock for item {item.item_name}")
 
             item.current_stock_quantity -= new_quantity
+            db.add(StockAuditModel(
+                item_id=item.id,
+                delta=-new_quantity,
+                delta_after=item.current_stock_quantity,
+                reason=f"Item added to Invoice #{db_invoice.invoice_number}",
+            ))
 
             line_item = InvoiceLineItemModel(
                 invoice_id=db_invoice.id,

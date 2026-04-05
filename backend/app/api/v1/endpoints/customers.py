@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func, case, and_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from app.db.session import get_db
 from app.models.customer import CustomerModel
-from app.schemas.customer import Customer, CustomerCreate, CustomerUpdate, CustomerListResponse
+from app.models.invoice import InvoiceModel, PaymentStatus
+from app.schemas.customer import Customer, CustomerCreate, CustomerUpdate, CustomerListResponse, CustomerOutstandingResponse
 from app.schemas.pagination import PaginatedResponse
 from app.utils.pagination import paginate_query
 
@@ -49,6 +51,103 @@ def get_customers(
     has_next=page < total_pages if page_size > 0 else False,
     has_previous=page > 1 if page_size > 0 else False
   )
+
+
+@router.get("/outstanding/", response_model=List[CustomerOutstandingResponse])
+def get_customers_outstanding(
+  include_zero_balance: bool = Query(False),
+  search: Optional[str] = None,
+  customer_type: Optional[str] = None,
+  db: Session = Depends(get_db)
+):
+  today = datetime.utcnow()
+
+  outstanding_expr = func.coalesce(func.sum(
+    case(
+      (InvoiceModel.payment_status != PaymentStatus.PAID,
+       InvoiceModel.grand_total - InvoiceModel.amount_paid),
+      else_=0.0
+    )
+  ), 0.0)
+
+  overdue_expr = func.coalesce(func.sum(
+    case(
+      (and_(
+        InvoiceModel.payment_status != PaymentStatus.PAID,
+        InvoiceModel.due_date.isnot(None),
+        InvoiceModel.due_date < today
+      ), InvoiceModel.grand_total - InvoiceModel.amount_paid),
+      else_=0.0
+    )
+  ), 0.0)
+
+  overdue_count_expr = func.count(
+    case(
+      (and_(
+        InvoiceModel.payment_status != PaymentStatus.PAID,
+        InvoiceModel.due_date.isnot(None),
+        InvoiceModel.due_date < today
+      ), 1)
+    )
+  )
+
+  unpaid_count_expr = func.count(
+    case(
+      (InvoiceModel.payment_status != PaymentStatus.PAID, 1)
+    )
+  )
+
+  oldest_unpaid_expr = func.min(
+    case(
+      (InvoiceModel.payment_status != PaymentStatus.PAID, InvoiceModel.invoice_date)
+    )
+  )
+
+  query = (
+    db.query(
+      CustomerModel.id,
+      CustomerModel.name,
+      CustomerModel.phone_number,
+      CustomerModel.customer_type,
+      outstanding_expr.label('total_outstanding'),
+      overdue_expr.label('overdue_amount'),
+      overdue_count_expr.label('overdue_invoice_count'),
+      unpaid_count_expr.label('unpaid_invoice_count'),
+      oldest_unpaid_expr.label('oldest_unpaid_date'),
+    )
+    .outerjoin(InvoiceModel, CustomerModel.id == InvoiceModel.customer_id)
+    .filter(CustomerModel.name != 'Walk-in Customer')
+  )
+
+  if search:
+    query = query.filter(CustomerModel.name.ilike(f"%{search}%"))
+
+  if customer_type:
+    if customer_type not in ('Retail', 'Wholesale'):
+      raise HTTPException(status_code=400, detail="customer_type must be 'Retail' or 'Wholesale'")
+    query = query.filter(CustomerModel.customer_type == customer_type)
+
+  query = query.group_by(CustomerModel.id)
+  rows = query.all()
+
+  result = []
+  for row in rows:
+    if not include_zero_balance and (row.total_outstanding or 0) == 0:
+      continue
+    result.append(CustomerOutstandingResponse(
+      id=row.id,
+      name=row.name,
+      phone_number=row.phone_number,
+      customer_type=row.customer_type,
+      total_outstanding=row.total_outstanding or 0.0,
+      overdue_amount=row.overdue_amount or 0.0,
+      overdue_invoice_count=row.overdue_invoice_count or 0,
+      unpaid_invoice_count=row.unpaid_invoice_count or 0,
+      oldest_unpaid_date=row.oldest_unpaid_date,
+    ))
+
+  result.sort(key=lambda x: x.total_outstanding, reverse=True)
+  return result
 
 
 @router.get("/{customer_id}", response_model=Customer)

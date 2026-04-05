@@ -24,6 +24,7 @@ class CustomerBase(BaseModel):
     return cleaned
   customer_type: Optional[str] = "Retail"
   credit_days: Optional[int] = 0
+  credit_limit: Optional[float] = None
   notes: Optional[str] = None
 
 
@@ -49,3 +50,18 @@ class CustomerListResponse(BaseModel):
   phone_number: Optional[str]
   customer_type: str
   credit_days: Optional[int] = None
+  credit_limit: Optional[float] = None
+
+
+class CustomerOutstandingResponse(BaseModel):
+  model_config = ConfigDict(from_attributes=True)
+
+  id: int
+  name: str
+  phone_number: Optional[str] = None
+  customer_type: str
+  total_outstanding: float
+  overdue_amount: float
+  overdue_invoice_count: int
+  unpaid_invoice_count: int
+  oldest_unpaid_date: Optional[datetime] = None

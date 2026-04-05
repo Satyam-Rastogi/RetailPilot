@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, text
+from sqlalchemy import Column, String, Float, Integer, Boolean, DateTime, ForeignKey, text
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 from datetime import datetime
@@ -23,9 +23,13 @@ class ItemModel(Base):
   variant_type = Column(String(50), nullable=True)   # e.g. "Size", "Color", "Style"
   hsn_sac_code = Column(String(30), nullable=True)
   gst_rate = Column(Float, nullable=True)   # e.g. 0, 5, 12, 18, 28 (percent)
+  category = Column(String(100), nullable=True)
+  supplier_id = Column(Integer, ForeignKey('suppliers.id'), nullable=True)
   is_active = Column(Boolean, nullable=False, default=True, server_default=text('1'))
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
   updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+
+  supplier = relationship("SupplierModel", back_populates="items", foreign_keys=[supplier_id])
 
   variants = relationship(
     "ItemVariantModel",
