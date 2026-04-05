@@ -110,9 +110,17 @@ function ItemsPage() {
 
   const queryClient = useQueryClient()
 
+  // When any advanced filter is active, fetch the full dataset so client-side
+  // filtering isn't silently limited to the current page.
+  const hasActiveFilters = !!(brandFilter.trim() || priceMode !== 'any' || qtyMode !== 'any')
+
   const { data: items, isLoading } = useQuery<PaginatedResponse<ItemListResponse>>({
-    queryKey: ['items', search, page],
-    queryFn: () => itemService.list({ search: search || undefined, page, page_size: PAGE_SIZE }),
+    queryKey: ['items', search, hasActiveFilters ? 'all' : page],
+    queryFn: () => itemService.list({
+      search: search || undefined,
+      page: hasActiveFilters ? 1 : page,
+      page_size: hasActiveFilters ? 1000 : PAGE_SIZE,
+    }),
   })
 
   const { data: suppliersData } = useQuery({
@@ -397,8 +405,6 @@ function ItemsPage() {
     return result
   }, [pageItems, brandFilter, priceMode, priceValue, priceMin, priceMax, qtyMode, qtyValue, qtyMin, qtyMax])
 
-  const hasActiveFilters = brandFilter.trim() || priceMode !== 'any' || qtyMode !== 'any'
-
   const lowStockCount = filteredItems.filter(i => i.is_low_stock).length
   const totalValue = filteredItems.reduce(
     (s, i) => s + i.selling_price_retail * (i.current_stock_quantity ?? 0), 0
@@ -594,7 +600,7 @@ function ItemsPage() {
           </div>
           {hasActiveFilters && (
             <p className="text-[10px] font-mono text-ink-light uppercase tracking-widest">
-              Showing {filteredItems.length} of {pageItems.length} items on this page
+              Showing {filteredItems.length} of {items?.total_items ?? pageItems.length} items
             </p>
           )}
         </div>
@@ -886,7 +892,7 @@ function ItemsPage() {
               </tbody>
             </table>
           </div>
-          {items && items.total_pages > 1 && (
+          {items && !hasActiveFilters && items.total_pages > 1 && (
             <div className="border-t border-line">
               <Pagination
                 currentPage={page}
