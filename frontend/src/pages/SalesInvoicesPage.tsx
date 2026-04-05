@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
@@ -33,14 +34,29 @@ const inputCls = 'w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono t
 const labelCls = 'block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5'
 
 function SalesInvoicesPage() {
-  const [filters, setFilters] = useState({
-    date_from: '',
-    date_to: '',
-    invoice_number: '',
-    customer_name: '',
-    payment_status: '',
-    overdue_only: false,
-  })
+  const [searchParams, setSearchParams] = useSearchParams()
+  const filters = {
+    date_from:      searchParams.get('from')     ?? '',
+    date_to:        searchParams.get('to')       ?? '',
+    invoice_number: searchParams.get('inv')      ?? '',
+    customer_name:  searchParams.get('customer') ?? '',
+    payment_status: searchParams.get('status')   ?? '',
+    overdue_only:   searchParams.get('overdue')  === '1',
+  }
+  const setFilters = (next: typeof filters) => {
+    setSearchParams(p => {
+      const n = new URLSearchParams(p)
+      next.date_from      ? n.set('from', next.date_from)         : n.delete('from')
+      next.date_to        ? n.set('to', next.date_to)             : n.delete('to')
+      next.invoice_number ? n.set('inv', next.invoice_number)     : n.delete('inv')
+      next.customer_name  ? n.set('customer', next.customer_name) : n.delete('customer')
+      next.payment_status ? n.set('status', next.payment_status)  : n.delete('status')
+      next.overdue_only   ? n.set('overdue', '1')                 : n.delete('overdue')
+      n.set('page', '1')
+      return n
+    }, { replace: true })
+  }
+
   const [showInvoiceDetail, setShowInvoiceDetail] = useState(false)
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [activeTab, setActiveTab] = useState<'details' | 'returns' | 'edit'>('details')
@@ -54,12 +70,12 @@ function SalesInvoicesPage() {
     line_items: [] as EditLineItem[],
   })
 
-  const [page, setPage] = useState(1)
+  const page    = parseInt(searchParams.get('page') ?? '1')
+  const setPage = (p: number) => setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('page', String(p)); return n })
+
   const [showCreateModal, setShowCreateModal] = useState(false)
 
   const queryClient = useQueryClient()
-
-  useEffect(() => { setPage(1) }, [filters])
 
   const { data: invoices, isLoading } = useQuery<PaginatedResponse<InvoiceListResponse>>({
     queryKey: ['invoices', filters, page],
@@ -351,14 +367,31 @@ function SalesInvoicesPage() {
             {invoices?.total_items ?? 0} invoices total
           </p>
         </div>
-        <MagneticButton strength={0.5}>
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setShowCreateModal(true)}
-            className="flex items-center gap-2 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
+            onClick={() => {
+              const params = new URLSearchParams()
+              if (filters.date_from) params.set('date_from', filters.date_from)
+              if (filters.date_to) params.set('date_to', filters.date_to)
+              if (filters.customer_name) params.set('customer_name', filters.customer_name)
+              if (filters.payment_status) params.set('payment_status', filters.payment_status)
+              if (filters.overdue_only) params.set('overdue_only', 'true')
+              window.open(`/api/v1/invoices/export/?${params.toString()}`, '_blank')
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-hover brutal-focus transition-all"
+            title="Export current view as CSV"
           >
-            <Plus className="w-4 h-4" /> New Invoice
+            Export CSV
           </button>
-        </MagneticButton>
+          <MagneticButton strength={0.5}>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
+            >
+              <Plus className="w-4 h-4" /> New Invoice
+            </button>
+          </MagneticButton>
+        </div>
       </div>
 
       {/* ── Filters ─────────────────────────────────────────────────────── */}

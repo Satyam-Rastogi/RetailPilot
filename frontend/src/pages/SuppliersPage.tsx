@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useModalKeyboard } from '../hooks/useModalKeyboard'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -11,8 +12,12 @@ import { MagneticButton } from '../components/MagneticButton'
 const PAGE_SIZE = 20
 
 function SuppliersPage() {
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const search = searchParams.get('q') ?? ''
+  const page   = parseInt(searchParams.get('page') ?? '1')
+  const setSearch = (v: string) => setSearchParams(p => { const n = new URLSearchParams(p); v ? n.set('q', v) : n.delete('q'); n.set('page', '1'); return n }, { replace: true })
+  const setPage   = (p: number) => setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('page', String(p)); return n })
+
   const [showModal, setShowModal] = useState(false)
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
@@ -30,8 +35,6 @@ function SuppliersPage() {
   })
 
   const queryClient = useQueryClient()
-
-  useEffect(() => { setPage(1) }, [search])
 
   const { data: suppliers, isLoading } = useQuery<PaginatedResponse<SupplierListResponse>>({
     queryKey: ['suppliers', search, page],

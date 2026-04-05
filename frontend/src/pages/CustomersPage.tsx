@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useModalKeyboard } from '../hooks/useModalKeyboard'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -19,6 +20,7 @@ interface CustomerFormData {
   gstin: string
   customer_type: string
   credit_days: number
+  credit_limit: string
   notes: string
 }
 
@@ -30,12 +32,17 @@ const emptyForm: CustomerFormData = {
   gstin: '',
   customer_type: 'Retail',
   credit_days: 0,
+  credit_limit: '',
   notes: '',
 }
 
 function CustomersPage() {
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+  const search = searchParams.get('q') ?? ''
+  const page   = parseInt(searchParams.get('page') ?? '1')
+  const setSearch = (v: string) => setSearchParams(p => { const n = new URLSearchParams(p); v ? n.set('q', v) : n.delete('q'); n.set('page', '1'); return n }, { replace: true })
+  const setPage   = (p: number) => setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('page', String(p)); return n })
+
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
@@ -43,8 +50,6 @@ function CustomersPage() {
   const [formError, setFormError] = useState('')
 
   const queryClient = useQueryClient()
-
-  useEffect(() => { setPage(1) }, [search])
 
   const { data: customers, isLoading } = useQuery<PaginatedResponse<CustomerListResponse>>({
     queryKey: ['customers', search, page],
@@ -102,6 +107,7 @@ function CustomersPage() {
       gstin: detail.gstin || '',
       customer_type: detail.customer_type || 'Retail',
       credit_days: detail.credit_days || 0,
+      credit_limit: detail.credit_limit != null ? String(detail.credit_limit) : '',
       notes: detail.notes || '',
     })
     setFormError('')
@@ -118,6 +124,7 @@ function CustomersPage() {
     const payload = {
       ...formData,
       credit_days: Number(formData.credit_days) || 0,
+      credit_limit: formData.credit_limit.trim() ? Number(formData.credit_limit) : null,
       phone_number: formData.phone_number || undefined,
       email: formData.email || undefined,
       address: formData.address || undefined,
@@ -267,6 +274,22 @@ function CustomersPage() {
                 onChange={(e) => setFormData({ ...formData, credit_days: parseInt(e.target.value) || 0 })}
                 className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
                 placeholder="0"
+              />
+            </div>
+            <div>
+              <label htmlFor="cust-credit-limit" className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
+                Credit Limit ₹ <span className="normal-case tracking-normal">(blank = no limit)</span>
+              </label>
+              <input
+                id="cust-credit-limit"
+                name="credit_limit"
+                type="number"
+                min="0"
+                step="500"
+                value={formData.credit_limit}
+                onChange={(e) => setFormData({ ...formData, credit_limit: e.target.value })}
+                className="w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+                placeholder="e.g. 50000"
               />
             </div>
           </div>

@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { format } from 'date-fns'
-import { ArrowUpRight, ArrowDownRight, Search, X } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight, Search, X, RefreshCw } from 'lucide-react'
 import { stockAuditService } from '../services/api'
 import type { StockAuditEntry, PaginatedResponse } from '../types/api'
 import Pagination from '../components/Pagination'
@@ -10,37 +11,91 @@ import { cn } from '../lib/utils'
 
 const PAGE_SIZE = 20
 
+type EntryType = 'sale' | 'return' | 'void' | 'edit' | 'manual'
+type Direction = 'in' | 'out'
+
+// Derive display type from reason string (mirrors backend ilike patterns)
+function getEntryType(reason?: string): EntryType {
+  if (!reason) return 'manual'
+  const r = reason.toLowerCase()
+  if (r.startsWith('sold')) return 'sale'
+  if (r.startsWith('return')) return 'return'
+  if (r.includes('voided')) return 'void'
+  if (r.startsWith('qty') || r.startsWith('item added') || r.startsWith('item removed')) return 'edit'
+  return 'manual'
+}
+
+const TYPE_META: Record<EntryType, { label: string; dot: string; dotBorder: string }> = {
+  sale:   { label: 'Sale',   dot: 'bg-danger',   dotBorder: 'border-danger'         },
+  return: { label: 'Return', dot: 'bg-accent',   dotBorder: 'border-accent'         },
+  void:   { label: 'Void',   dot: 'bg-warning',  dotBorder: 'border-warning'        },
+  edit:   { label: 'Edit',   dot: 'bg-ink',      dotBorder: 'border-surface'        },
+  manual: { label: 'Manual', dot: 'bg-ink-light', dotBorder: 'border-ink-light'     },
+}
+
+const TYPE_BADGE: Record<EntryType, string> = {
+  sale:   'bg-danger text-on-status border-danger',
+  return: 'bg-accent text-on-accent border-accent',
+  void:   'bg-warning/20 text-warning border-warning',
+  edit:   'bg-surface text-ink border-ink',
+  manual: 'bg-ink text-surface border-ink',
+}
+
+const ALL_TYPES: EntryType[] = ['sale', 'return', 'manual', 'edit', 'void']
+
 function StockAuditPage() {
-  const [page, setPage] = useState(1)
-  const [search, setSearch] = useState('')
-  const [itemIdFilter, setItemIdFilter] = useState('')
+  const qc = useQueryClient()
+  const [searchParams, setSearchParams] = useSearchParams()
 
-  useEffect(() => { setPage(1) }, [itemIdFilter])
+  // Derive filter state from URL
+  const page       = parseInt(searchParams.get('page') ?? '1')
+  const itemIdFilter = searchParams.get('item_id') ? parseInt(searchParams.get('item_id')!) : undefined
+  const typeFilter   = (searchParams.get('type') as EntryType) || undefined
+  const dirFilter    = (searchParams.get('dir')  as Direction)  || undefined
 
-  // Debounce search → item name filter isn't supported by backend, so we filter by item_id
-  // Search accepts either item name (client-side) or item ID
-  const { data: auditLog, isLoading } = useQuery<PaginatedResponse<StockAuditEntry>>({
-    queryKey: ['stock-audit', itemIdFilter, page],
+  // Local buffer for the search input (committed on Enter / "Go")
+  const [search, setSearch] = useState(searchParams.get('item_id') ?? '')
+
+  const { data: auditLog, isLoading, isFetching } = useQuery<PaginatedResponse<StockAuditEntry>>({
+    queryKey: ['stock-audit', itemIdFilter, typeFilter, dirFilter, page],
     queryFn: () => stockAuditService.list({
       page,
       page_size: PAGE_SIZE,
-      item_id: itemIdFilter ? parseInt(itemIdFilter) : undefined,
+      item_id: itemIdFilter,
+      entry_type: typeFilter,
+      delta_direction: dirFilter,
     }),
+    refetchInterval: 30_000,
+    staleTime: 0,
   })
 
+  const updateParams = (updates: Record<string, string | null>) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev)
+      for (const [k, v] of Object.entries(updates)) {
+        if (v === null) next.delete(k); else next.set(k, v)
+      }
+      return next
+    })
+  }
+
   const handleSearchCommit = () => {
-    const trimmed = search.trim()
-    if (/^\d+$/.test(trimmed)) {
-      setItemIdFilter(trimmed)
-    } else {
-      setItemIdFilter('')
-    }
+    const t = search.trim()
+    updateParams({ item_id: /^\d+$/.test(t) ? t : null, page: '1' })
   }
 
   const handleClear = () => {
     setSearch('')
-    setItemIdFilter('')
+    updateParams({ item_id: null, page: '1' })
   }
+
+  const toggleType = (t: EntryType) =>
+    updateParams({ type: typeFilter === t ? null : t, page: '1' })
+
+  const toggleDir = (d: Direction) =>
+    updateParams({ dir: dirFilter === d ? null : d, page: '1' })
+
+  const setPage = (p: number) => updateParams({ page: String(p) })
 
   const entries = auditLog?.data ?? []
 
@@ -60,40 +115,110 @@ function StockAuditPage() {
           </motion.h1>
           <p className="font-mono text-sm text-ink-light mt-3 uppercase tracking-widest">
             {auditLog
-              ? `${auditLog.total_items} entries — full stock movement history`
-              : 'History of all stock adjustments'}
+              ? `${auditLog.total_items} entries — sales, returns & adjustments`
+              : 'Full stock movement history'}
           </p>
           <div className="w-16 h-0.5 bg-accent mt-4" />
         </div>
 
-        {/* Search */}
-        <div className="flex gap-2 items-stretch md:w-[320px] shrink-0">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-light pointer-events-none" />
-            <input
-              type="text"
-              placeholder="Filter by item ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearchCommit()}
-              className="w-full pl-9 pr-4 py-2.5 brutal-border bg-surface text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
-            />
+        {/* Controls */}
+        <div className="flex flex-col gap-2 md:w-[380px] shrink-0">
+          {/* Search + refresh */}
+          <div className="flex gap-2 items-stretch">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-light pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Filter by item ID..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearchCommit()}
+                className="w-full pl-9 pr-4 py-2.5 brutal-border bg-surface text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors"
+              />
+            </div>
+            {search ? (
+              <button onClick={handleClear} className="px-3 brutal-border hover:border-danger hover:text-danger transition-colors brutal-focus">
+                <X className="w-4 h-4" />
+              </button>
+            ) : (
+              <button onClick={handleSearchCommit} className="px-4 brutal-border font-mono text-xs uppercase tracking-wider hover:border-accent hover:text-accent transition-colors brutal-focus">
+                Go
+              </button>
+            )}
+            <button
+              onClick={() => qc.invalidateQueries({ queryKey: ['stock-audit'] })}
+              className={cn(
+                'px-3 brutal-border transition-colors brutal-focus',
+                isFetching ? 'text-accent border-accent' : 'hover:border-accent hover:text-accent'
+              )}
+              title="Refresh"
+            >
+              <RefreshCw className={cn('w-4 h-4', isFetching && 'animate-spin')} />
+            </button>
           </div>
-          {search ? (
-            <button
-              onClick={handleClear}
-              className="px-3 brutal-border hover:border-danger hover:text-danger transition-colors brutal-focus"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          ) : (
-            <button
-              onClick={handleSearchCommit}
-              className="px-4 brutal-border font-mono text-xs uppercase tracking-wider hover:border-accent hover:text-accent transition-colors brutal-focus"
-            >
-              Go
-            </button>
-          )}
+
+          {/* Direction pills — Stock In / Stock Out */}
+          <div className="flex gap-1.5">
+            {(['in', 'out'] as Direction[]).map(d => {
+              const active = dirFilter === d
+              return (
+                <button
+                  key={d}
+                  onClick={() => toggleDir(d)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1 border font-mono text-[10px] uppercase tracking-widest transition-colors brutal-focus',
+                    active
+                      ? d === 'in'
+                        ? 'bg-ink text-surface border-ink'
+                        : 'bg-danger text-on-status border-danger'
+                      : 'bg-surface border-line hover:border-accent hover:text-accent'
+                  )}
+                >
+                  {d === 'in'
+                    ? <><ArrowUpRight className="w-3 h-3" /> Stock In</>
+                    : <><ArrowDownRight className="w-3 h-3" /> Stock Out</>
+                  }
+                </button>
+              )
+            })}
+            {/* Clear all filters */}
+            {(typeFilter || dirFilter || itemIdFilter) && (
+              <button
+                onClick={() => { setSearch(''); updateParams({ type: null, dir: null, item_id: null, page: '1' }) }}
+                className="px-3 py-1 border border-line font-mono text-[10px] uppercase tracking-widest hover:border-danger hover:text-danger transition-colors brutal-focus ml-auto"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
+
+          {/* Type pills — server-side filtered */}
+          <div className="flex gap-1.5 flex-wrap">
+            {ALL_TYPES.map(t => {
+              const meta = TYPE_META[t]
+              const active = typeFilter === t
+              return (
+                <button
+                  key={t}
+                  onClick={() => toggleType(t)}
+                  className={cn(
+                    'px-2.5 py-1 border font-mono text-[10px] uppercase tracking-widest transition-colors brutal-focus flex items-center gap-1.5',
+                    active
+                      ? 'bg-ink text-surface border-ink'
+                      : 'bg-surface border-line hover:border-accent hover:text-accent'
+                  )}
+                >
+                  {/* Dot with explicit border so it's always visible */}
+                  <span className={cn(
+                    'inline-block w-2 h-2 border',
+                    meta.dot,
+                    meta.dotBorder,
+                  )} />
+                  {meta.label}
+                </button>
+              )
+            })}
+          </div>
         </div>
       </header>
 
@@ -104,24 +229,30 @@ function StockAuditPage() {
         </div>
       ) : entries.length > 0 ? (
         <>
-          <div className="relative pt-6 pb-12">
-            {/* Vertical gradient line */}
-            <div className="absolute left-[27px] top-10 bottom-0 w-[2px] bg-gradient-to-b from-accent/80 via-ink/20 to-transparent z-0 pointer-events-none" />
+          <div className="relative">
+            {/* Vertical line — center = left-3 = 12px, center of the 24px node */}
+            <div className="absolute left-3 top-4 bottom-4 w-[2px] bg-gradient-to-b from-accent/80 via-ink/20 to-transparent pointer-events-none" />
 
-            <div className="space-y-4">
+            <div className="space-y-3">
               {entries.map((entry, i) => {
                 const isPositive = entry.delta > 0
+                const type = getEntryType(entry.reason)
+                const badgeCls = TYPE_BADGE[type]
+                const meta = TYPE_META[type]
+
                 return (
                   <motion.div
                     key={entry.id}
-                    initial={{ opacity: 0, x: -16 }}
+                    initial={{ opacity: 0, x: -12 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03, duration: 0.25 }}
-                    className="relative flex gap-5 group/entry"
+                    transition={{ delay: i * 0.025, duration: 0.2 }}
+                    className="relative pl-12 group/entry"
                   >
-                    {/* Node */}
+                    {/* Node — on the line, vertically centered to its card */}
                     <div className={cn(
-                      'relative z-10 w-6 h-6 shrink-0 border border-ink flex items-center justify-center transition-transform duration-200 group-hover/entry:scale-110',
+                      'absolute left-0 top-1/2 -translate-y-1/2 z-10',
+                      'w-6 h-6 border border-ink flex items-center justify-center',
+                      'transition-transform duration-200 group-hover/entry:scale-110',
                       isPositive ? 'bg-paper' : 'bg-danger',
                     )}>
                       {isPositive
@@ -130,16 +261,26 @@ function StockAuditPage() {
                       }
                     </div>
 
-                    {/* Card — uses its own group/card so hover effects only fire when hovering the card itself */}
-                    <div className="flex-1 brutal-border bg-surface p-6 hover:bg-ink hover:text-surface transition-colors cursor-default min-w-0 group/card">
+                    {/* Card */}
+                    <div className="brutal-border bg-surface p-5 hover:bg-ink hover:text-surface transition-colors cursor-default group/card">
                       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3 mb-3">
-                        <div className="min-w-0">
-                          <p className="font-display font-bold text-lg leading-tight truncate">
-                            {entry.item_name || `Item #${entry.item_id}`}
-                          </p>
-                          <p className="font-mono text-[10px] uppercase tracking-widest text-ink-light group-hover/card:text-surface/60 mt-0.5">
-                            ID {entry.item_id} · {format(new Date(entry.created_at), 'dd MMM yyyy, HH:mm')}
-                          </p>
+                        <div className="min-w-0 flex items-start gap-2.5">
+                          {/* Type badge */}
+                          <span className={cn(
+                            'shrink-0 mt-0.5 px-2 py-0.5 border font-mono text-[9px] uppercase tracking-widest flex items-center gap-1',
+                            badgeCls,
+                          )}>
+                            <span className={cn('inline-block w-1.5 h-1.5 border', meta.dot, meta.dotBorder)} />
+                            {meta.label}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="font-display font-bold text-lg leading-tight truncate">
+                              {entry.item_name || `Item #${entry.item_id}`}
+                            </p>
+                            <p className="font-mono text-[10px] uppercase tracking-widest text-ink-light group-hover/card:text-surface/60 mt-0.5">
+                              ID {entry.item_id} · {format(new Date(entry.created_at), 'dd MMM yyyy, HH:mm')}
+                            </p>
+                          </div>
                         </div>
 
                         {/* Delta badge */}
@@ -158,7 +299,6 @@ function StockAuditPage() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-4">
-                        {/* Stock after */}
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[10px] uppercase tracking-widest text-ink-light group-hover/card:text-surface/60">
                             Stock After:
@@ -167,8 +307,6 @@ function StockAuditPage() {
                             {entry.delta_after}
                           </span>
                         </div>
-
-                        {/* Reason */}
                         {entry.reason && (
                           <span className="font-mono text-sm text-ink-light group-hover/card:text-surface/70 truncate">
                             {entry.reason}
@@ -194,8 +332,12 @@ function StockAuditPage() {
         </>
       ) : (
         <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light mb-2">No audit entries found</p>
-          <p className="font-mono text-xs text-ink-light">Stock changes will appear here once adjustments are made</p>
+          <p className="font-mono text-sm uppercase tracking-widest text-ink-light mb-2">No entries found</p>
+          <p className="font-mono text-xs text-ink-light">
+            {typeFilter || dirFilter
+              ? 'No entries match the selected filters.'
+              : 'Stock movements from sales, returns and adjustments will appear here.'}
+          </p>
         </div>
       )}
     </div>

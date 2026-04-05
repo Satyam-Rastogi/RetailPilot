@@ -1,9 +1,10 @@
 import React, { useState, useMemo, useRef } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from '../lib/toast'
-import { itemService, variantService } from '../services/api'
+import { itemService, variantService, supplierService } from '../services/api'
 import type { Item, ItemListResponse, ItemVariant, StockAdjust, PaginatedResponse } from '../types/api'
 import Pagination from '../components/Pagination'
 import { Sparkline } from '../components/Sparkline'
@@ -59,23 +60,47 @@ const VARIANT_TYPES = ['Size', 'Color', 'Style', 'Material', 'Weight', 'Pack']
 
 function ItemsPage() {
   const { formatCurrency, formatCurrencyCompact } = useSettings()
-  const [search, setSearch] = useState('')
-  const [page, setPage] = useState(1)
+  const [searchParams, setSearchParams] = useSearchParams()
+
+  // URL-persisted filter state
+  const search      = searchParams.get('q')         ?? ''
+  const page        = parseInt(searchParams.get('page') ?? '1')
+  const brandFilter = searchParams.get('brand')     ?? ''
+  const priceMode   = (searchParams.get('pmode')    ?? 'any') as 'any' | 'exact' | 'gt' | 'lt' | 'range'
+  const priceValue  = searchParams.get('pval')      ?? ''
+  const priceMin    = searchParams.get('pmin')      ?? ''
+  const priceMax    = searchParams.get('pmax')      ?? ''
+  const qtyMode     = (searchParams.get('qmode')    ?? 'any') as 'any' | 'exact' | 'gt' | 'lt' | 'range'
+  const qtyValue    = searchParams.get('qval')      ?? ''
+  const qtyMin      = searchParams.get('qmin')      ?? ''
+  const qtyMax      = searchParams.get('qmax')      ?? ''
+
+  const up = (updates: Record<string, string | null>) =>
+    setSearchParams(prev => {
+      const n = new URLSearchParams(prev)
+      for (const [k, v] of Object.entries(updates)) v === null ? n.delete(k) : n.set(k, v)
+      return n
+    }, { replace: true })
+
+  const setSearch      = (v: string) => up({ q: v || null, page: '1' })
+  const setPage        = (p: number) => setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('page', String(p)); return n })
+  const setBrandFilter = (v: string) => up({ brand: v || null, page: '1' })
+  const setPriceMode   = (v: typeof priceMode) => up({ pmode: v !== 'any' ? v : null, pval: null, pmin: null, pmax: null, page: '1' })
+  const setPriceValue  = (v: string) => up({ pval: v || null })
+  const setPriceMin    = (v: string) => up({ pmin: v || null })
+  const setPriceMax    = (v: string) => up({ pmax: v || null })
+  const setQtyMode     = (v: typeof qtyMode)   => up({ qmode: v !== 'any' ? v : null, qval: null, qmin: null, qmax: null, page: '1' })
+  const setQtyValue    = (v: string) => up({ qval: v || null })
+  const setQtyMin      = (v: string) => up({ qmin: v || null })
+  const setQtyMax      = (v: string) => up({ qmax: v || null })
+
+  // UI-only state (not worth persisting in URL)
   const [showModal, setShowModal] = useState(false)
   const [editingItem, setEditingItem] = useState<Item | null>(null)
   const modalRef = useRef<HTMLDivElement>(null)
   useModalKeyboard(showModal, () => setShowModal(false), modalRef)
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set())
   const [showFilters, setShowFilters] = useState(false)
-  const [brandFilter, setBrandFilter] = useState('')
-  const [priceMode, setPriceMode] = useState<'any' | 'exact' | 'gt' | 'lt' | 'range'>('any')
-  const [priceValue, setPriceValue] = useState('')
-  const [priceMin, setPriceMin] = useState('')
-  const [priceMax, setPriceMax] = useState('')
-  const [qtyMode, setQtyMode] = useState<'any' | 'exact' | 'gt' | 'lt' | 'range'>('any')
-  const [qtyValue, setQtyValue] = useState('')
-  const [qtyMin, setQtyMin] = useState('')
-  const [qtyMax, setQtyMax] = useState('')
 
   // Variant builder state (in modal)
   const [variantInput, setVariantInput] = useState('')
@@ -89,6 +114,13 @@ function ItemsPage() {
     queryKey: ['items', search, page],
     queryFn: () => itemService.list({ search: search || undefined, page, page_size: PAGE_SIZE }),
   })
+
+  const { data: suppliersData } = useQuery({
+    queryKey: ['suppliers-for-items'],
+    queryFn: () => supplierService.list({ page_size: 200 }),
+    enabled: showModal,
+  })
+  const suppliersForForm = suppliersData?.data ?? []
 
   const [formData, setFormData] = useState({
     item_name: '',
@@ -106,6 +138,8 @@ function ItemsPage() {
     variant_type: 'Size',
     hsn_sac_code: '',
     gst_rate: '',
+    category: '',
+    supplier_id: '',
   })
 
   const resetForm = () => {
@@ -130,6 +164,8 @@ function ItemsPage() {
       variant_type: 'Size',
       hsn_sac_code: '',
       gst_rate: '',
+      category: '',
+      supplier_id: '',
     })
   }
 
@@ -258,6 +294,8 @@ function ItemsPage() {
       low_stock_threshold: formData.low_stock_threshold ? parseInt(formData.low_stock_threshold) : null,
       variant_type: formData.has_variants ? formData.variant_type : null,
       gst_rate: formData.gst_rate !== '' ? parseFloat(formData.gst_rate) : null,
+      category: formData.category.trim() || null,
+      supplier_id: formData.supplier_id ? parseInt(formData.supplier_id) : null,
     }
     if (editingItem) {
       updateMutation.mutate({ id: editingItem.id, data })
@@ -286,6 +324,8 @@ function ItemsPage() {
       variant_type: fullItem.variant_type || 'Size',
       hsn_sac_code: (fullItem as any).hsn_sac_code || '',
       gst_rate: fullItem.gst_rate?.toString() ?? '',
+      category: fullItem.category || '',
+      supplier_id: fullItem.supplier_id?.toString() || '',
     })
     setShowModal(true)
   }
@@ -1036,6 +1076,23 @@ function ItemsPage() {
                         <option value="12">12% — Standard goods</option>
                         <option value="18">18% — Standard services</option>
                         <option value="28">28% — Luxury / sin goods</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Category</label>
+                      <input type="text" value={formData.category}
+                        onChange={e => setFormData({ ...formData, category: e.target.value })}
+                        placeholder="e.g., Fabrics, Electronics" className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Supplier</label>
+                      <select value={formData.supplier_id}
+                        onChange={e => setFormData({ ...formData, supplier_id: e.target.value })}
+                        className={inputCls}>
+                        <option value="">No supplier</option>
+                        {(suppliersForForm ?? []).map((s: any) => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
                       </select>
                     </div>
                   </div>

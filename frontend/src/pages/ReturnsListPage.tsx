@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { format } from 'date-fns'
 import { motion } from 'framer-motion'
-import { Eye, Pencil, X, ClipboardList, FileText, Plus, Package } from 'lucide-react'
+import { Eye, Pencil, X, ClipboardList, FileText, Plus, Package, Trash2 } from 'lucide-react'
 import { toast } from '../lib/toast'
 import { returnService, customerService, itemService } from '../services/api'
 import { ReturnReasonCategory, type ReturnReceipt } from '../types/api'
@@ -56,9 +56,18 @@ function getReasonLabel(category: string) {
 
 function ReturnsListPage() {
   const navigate = useNavigate()
-  const [page, setPage] = useState(1)
-  const [reasonCategory, setReasonCategory] = useState('')
-  const [returnType, setReturnType] = useState<string>('all')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const page           = parseInt(searchParams.get('page') ?? '1')
+  const reasonCategory = searchParams.get('reason') ?? ''
+  const returnType     = searchParams.get('type')   ?? 'all'
+
+  const setPage = (p: number) =>
+    setSearchParams(prev => { const n = new URLSearchParams(prev); n.set('page', String(p)); return n })
+  const setReasonCategory = (v: string) =>
+    setSearchParams(p => { const n = new URLSearchParams(p); v ? n.set('reason', v) : n.delete('reason'); n.set('page', '1'); return n }, { replace: true })
+  const setReturnType = (v: string) =>
+    setSearchParams(p => { const n = new URLSearchParams(p); v && v !== 'all' ? n.set('type', v) : n.delete('type'); n.set('page', '1'); return n }, { replace: true })
+
   const [selectedReturn, setSelectedReturn] = useState<any>(null)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editFormData, setEditFormData] = useState({
@@ -181,6 +190,22 @@ function ReturnsListPage() {
       toast.error(error.response?.data?.detail || 'Failed to update return.')
     },
   })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => returnService.delete(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['returns'] })
+      toast.success('Return deleted and all effects reversed.')
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.detail || 'Failed to delete return.')
+    },
+  })
+
+  const handleDeleteReturn = (ret: any) => {
+    if (!window.confirm(`Delete Return #${ret.id} for ${ret.invoice_number ?? 'GR'}? This will reverse stock and credit note allocations.`)) return
+    deleteMutation.mutate(ret.id)
+  }
 
   const handleEditClick = (ret: any) => {
     returnService.get(ret.id).then((details: ReturnReceipt) => {
@@ -391,6 +416,13 @@ function ReturnsListPage() {
                           >
                             <Pencil className="w-3.5 h-3.5" />
                           </button>
+                          <button
+                            onClick={() => handleDeleteReturn(ret)}
+                            className="p-1.5 brutal-border hover:bg-danger hover:text-on-status hover:border-danger transition-colors brutal-focus"
+                            title="Delete return and reverse effects"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                           {ret.invoice_id && (
                             <button
                               onClick={() => navigate(`/invoices/${ret.invoice_id}`)}
@@ -412,7 +444,7 @@ function ReturnsListPage() {
           {/* Pagination */}
           <div className="flex items-center justify-center gap-4">
             <button
-              onClick={() => setPage(p => Math.max(1, p - 1))}
+              onClick={() => setPage(Math.max(1, page - 1))}
               disabled={page === 1}
               className="px-5 py-2.5 brutal-border font-mono text-sm uppercase tracking-wider hover:border-accent hover:text-accent transition-colors brutal-focus disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -420,7 +452,7 @@ function ReturnsListPage() {
             </button>
             <span className="font-mono text-sm text-ink-light">Page {page}</span>
             <button
-              onClick={() => setPage(p => p + 1)}
+              onClick={() => setPage(page + 1)}
               disabled={(returns || []).length < 20}
               className="px-5 py-2.5 brutal-border font-mono text-sm uppercase tracking-wider hover:border-accent hover:text-accent transition-colors brutal-focus disabled:opacity-40 disabled:cursor-not-allowed"
             >
@@ -462,7 +494,7 @@ function ReturnsListPage() {
                     >
                       <option value="">Select customer…</option>
                       {[...allCustomers]
-                        .sort((a: any, b: any) => (a.customer_type === 'Wholesale' ? -1 : 1))
+                        .sort((a: any, _b: any) => (a.customer_type === 'Wholesale' ? -1 : 1))
                         .map((c: any) => (
                           <option key={c.id} value={c.id}>
                             {c.name} ({c.customer_type})
