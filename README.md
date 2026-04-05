@@ -58,12 +58,56 @@ GET  /api/v1/payments/customer/{id}/ledger  # FIFO ledger: invoices + payments +
 POST /api/v1/payments/                      # create payment; runs FIFO allocation automatically
 DELETE /api/v1/payments/{id}                # reverses allocations, resets invoice statuses
 
+GET  /api/v1/customers/outstanding/         # all customers: outstanding, overdue amount/count, oldest unpaid date (one SQL aggregate)
+
+GET  /api/v1/reports/aging/                 # unpaid invoices per customer bucketed by days overdue (Current/1-30/31-60/61-90/90+)
+
 GET  /api/v1/items/                         # list with search + low_stock_only filter
 POST /api/v1/items/{id}/adjust-stock        # manual adjustment with reason; writes StockAudit row
 GET  /api/v1/items/stock-audit/             # paginated audit log
 
 POST /api/v1/returns/                       # create return; validates qty, restores stock, creates credit_note payment
 ```
+
+## Planned: AI Chatbot
+
+A Claude-powered conversational agent that can perform any action available through the existing API — no separate logic needed, just tool use wrappers around the existing endpoints.
+
+### Interfaces
+
+| Interface | Description |
+|---|---|
+| **Web text** | Floating `ChatWidget` in the React app — message history, streaming responses |
+| **Web voice** | Push-to-talk via browser Web Speech API (MVP) → upgradeable to Deepgram/Whisper + ElevenLabs |
+| **Telegram** | `python-telegram-bot` webhook — text the bot from phone to query/act |
+
+### Architecture
+
+```
+User message (text/voice/Telegram)
+        ↓
+  ChatAgent (backend/app/chatbot/agent.py)
+        ↓ calls Anthropic Claude with tool use
+  tools.py — wraps existing /api/v1/* endpoints
+        ↓ executes tool calls against DB
+  Natural language response → back to interface
+```
+
+### Example Queries
+
+- "What does Ramesh owe?" → outstanding balance + overdue invoices
+- "Record ₹5000 cash payment from Ramesh" → creates payment via FIFO engine
+- "Which items are running low?" → low-stock list
+- "Show me today's sales" → dashboard KPIs
+- "Show aging report" → bucket table formatted as text
+
+### Environment Variables (when implemented)
+
+| Variable | Purpose |
+|---|---|
+| `ANTHROPIC_API_KEY` | Claude API access |
+| `TELEGRAM_BOT_TOKEN` | BotFather token |
+| `TELEGRAM_WEBHOOK_URL` | Public HTTPS URL for Telegram webhook |
 
 ## Getting Started
 
@@ -126,12 +170,16 @@ npm run dev       # runs on http://localhost:5173
 - "New Invoice" button on customer LedgerPage (pre-fills modal with that customer)
 - HSN/SAC code required when `gst_rate > 0` on invoice line items (API validation)
 - PO reference number on invoices (field, modal input, detail view, print)
+- Global outstanding receivables: `GET /customers/outstanding/` (single SQL aggregate, no N+1) + Receivables page with overdue flags, type filter, amount filter, sortable columns, "Show Settled" toggle
+- Credit limit per customer: `credit_limit` field on CustomerModel + breach/near-limit warning banner in invoice creation modal
+- Aging report: `GET /reports/aging/` bucketing unpaid invoices into Current/1–30/31–60/61–90/90+ day buckets + `AgingReportPage` with summary tiles and customer table
+- One-step counter sale: `POST /invoices/counter-sale/` (invoice + payment in one transaction) + `CounterSaleModal` with Walk-in default, payment method, amount received, change due display, and success receipt overlay
+- Daily sales summary: `GET /reports/daily-summary/` + `DailySummaryPage` showing invoices and collections split by customer type and payment method, with quick-date navigation
 
 ### Open (Next Sprints)
 
-- Global outstanding receivables view (P2-6) — all customers sorted by balance with overdue flags ← **Sprint 2**
-- Credit limit per customer with breach warnings (P2-5)
-- Aging report: outstanding invoices bucketed by days overdue (WS-1)
+- Revenue analytics dashboard — retail vs wholesale split, monthly trend (P2-1) ← **Sprint 5**
+- AI chatbot: Claude-powered agent via web UI (text + voice) and Telegram — can perform any action available in the frontend
 - One-step retail counter sale (invoice + payment in single flow) (RET-2)
 - Daily sales summary by payment method (RET-4)
 - Revenue reporting / analytics dashboard (P2-1)
