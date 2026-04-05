@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { ArrowLeft, ChevronDown, ChevronUp, RotateCcw, MessageCircle, Printer, Check, Clock, X } from 'lucide-react'
+import { ArrowLeft, ChevronDown, ChevronUp, RotateCcw, MessageCircle, Printer, Check, Clock, X, AlertTriangle } from 'lucide-react'
 import { invoiceService, ledgerService, companyProfileService } from '../services/api'
 import type { InvoiceAllocationDetail, CompanyProfile } from '../types/api'
 import { useSettings } from '../components/SettingsProvider'
@@ -217,6 +217,14 @@ export default function InvoiceDetailPage() {
   const interState = isInterStateTx(companyProfile?.shop_gstin, invoice.customer_gstin)
   const buyerState = stateFromGSTIN(invoice.customer_gstin)
   const amtWords = amountInWords(invoice.grand_total)
+
+  // Warning: routing is uncertain when GSTINs are missing (only relevant for GST invoices)
+  const isRetailCustomer = invoice.customer_type === 'Retail' || invoice.customer_name === 'Walk-in Customer'
+  const igstWarning = !companyProfile?.shop_gstin
+    ? 'Shop GSTIN is not set in Company Profile — tax type defaulted to Intra-State (CGST+SGST). Add your GSTIN to enable correct IGST routing for inter-state sales.'
+    : !isRetailCustomer && !invoice.customer_gstin
+    ? 'Customer GSTIN is not recorded — tax type defaulted to Intra-State (CGST+SGST). Add the customer\'s GSTIN to determine correct inter/intra-state routing.'
+    : null
 
   const printDateStr = new Date(invoice.invoice_date).toLocaleDateString('en-IN', {
     day: '2-digit', month: 'short', year: 'numeric',
@@ -635,6 +643,17 @@ export default function InvoiceDetailPage() {
         </div>
         <div className="w-16 h-0.5 bg-accent mt-4" />
       </header>
+
+      {/* IGST routing warning — screen only, not printed */}
+      {igstWarning && (
+        <div className="flex items-start gap-3 border border-amber-500/60 bg-amber-500/10 px-4 py-3">
+          <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
+          <p className="font-mono text-xs text-amber-600 dark:text-amber-400 leading-relaxed">
+            <span className="font-bold uppercase tracking-widest">Tax Routing Uncertain — </span>
+            {igstWarning}
+          </p>
+        </div>
+      )}
 
       {/* Invoice Metadata */}
       <div className="brutal-border bg-surface p-6">
