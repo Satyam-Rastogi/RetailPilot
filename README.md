@@ -47,6 +47,8 @@ A FIFO-based shop management system for small Indian retail and wholesale busine
 
 ## API Endpoints (Selected)
 
+> Full interactive docs with request/response schemas available at **`http://localhost:8000/docs`** (Swagger UI) or **`http://localhost:8000/redoc`** (ReDoc) when the backend is running.
+
 ```
 GET  /api/v1/invoices/summary/              # KPI counts + outstanding totals (dashboard)
 GET  /api/v1/invoices/                      # list with filters: payment_status, overdue_only, customer_name, date range
@@ -65,9 +67,12 @@ GET  /api/v1/customers/outstanding/         # all customers: outstanding, overdu
 GET  /api/v1/reports/aging/                 # unpaid invoices per customer bucketed by days overdue (Current/1-30/31-60/61-90/90+)
 GET  /api/v1/reports/daily-summary/         # invoices + collections for a date split by customer type and payment method
 GET  /api/v1/reports/revenue/               # monthly revenue by customer type for a configurable lookback period
+GET  /api/v1/reports/inventory-value/       # full stock statement: per-item cost/retail value, velocity (30d), by-brand + by-category
+GET  /api/v1/reports/best-sellers/          # top items/brands/price-brackets/segments — period, metric, customer_type filters
+GET  /api/v1/reports/gst-summary/           # GST liability by rate slab with CGST/SGST split
 
 GET  /api/v1/items/                         # list with search + low_stock_only filter
-POST /api/v1/items/{id}/adjust-stock        # manual adjustment with reason; writes StockAudit row
+POST /api/v1/items/{id}/stock               # manual adjustment with reason; writes StockAudit row
 GET  /api/v1/items/stock-audit/             # paginated audit log
 
 POST /api/v1/returns/                       # create return; validates qty, restores stock, creates credit_note payment
@@ -187,6 +192,12 @@ npm run dev       # runs on http://localhost:5173
 - Supplier↔Item linkage: `supplier_id` FK on items, supplier dropdown in item form
 - Bulk invoice CSV export: `GET /invoices/export/` streaming with active filters
 - URL-persistent filter state: all list/filter pages use `useSearchParams` — filters, search, and pagination survive browser back/refresh and are shareable via URL
+- Analytics Hub at `/analytics` — 6-card navigation hub linking all report and analytics pages
+- Inventory Analytics at `/analytics/inventory` — waffle chart (stock status distribution), inventory value by brand (horizontal bar), fast/slow movers scatter (Stars/Overstocked/At Risk/Dead Weight quadrants), full stock statement table with search/filter/sort
+- Best Sellers at `/analytics/best-sellers` — 4 tabs: Items (podium top-3, sparklines, scatter, ranking), Brands (bar + table), Price Brackets (revenue/units by bracket), Segments (Wholesale vs Retail comparison)
+- Backend analytics endpoints: `GET /reports/inventory-value/` (stock statement + brand aggregation), `GET /reports/best-sellers/` (period + customer_type + metric filters), `GET /reports/gst-summary/` (GST amounts by rate slab)
+- Comprehensive Swagger/OpenAPI docs: every endpoint has `summary`, `description` (business rules + side effects in markdown), and `responses` error codes; typed response schemas (`InvoiceListResponse`, `InvoiceSummaryResponse`) replacing `dict` on list/summary endpoints; `openapi_tags` with descriptions for all 10 tag groups; full app-level markdown description at `/docs`
+- TSDoc comments on all TypeScript interfaces (`types/api.ts`) and all service methods (`services/api.ts`) — field-level notes on non-obvious fields, business rule callouts (FIFO, payment immutability, soft-delete semantics)
 
 ### Open
 
@@ -201,20 +212,26 @@ RetailPilot/
 │   ├── alembic/                   # migration scripts
 │   │   └── versions/              # one file per migration
 │   ├── app/
-│   │   ├── api/v1/endpoints/      # FastAPI route handlers
+│   │   ├── api/v1/endpoints/      # FastAPI route handlers (9 files)
 │   │   ├── core/                  # logging_config.py
 │   │   ├── db/                    # session.py, base.py
 │   │   ├── domain/                # entities, services (calculation_service.py)
-│   │   ├── models/                # SQLAlchemy ORM models
+│   │   ├── models/                # SQLAlchemy ORM models (11 model classes)
 │   │   ├── schemas/               # Pydantic request/response schemas
 │   │   └── utils/                 # pagination, normalization
 │   └── alembic.ini
-└── frontend/
-    └── src/
-        ├── components/            # reusable UI (Pagination, CreateInvoiceModal, etc.)
-        ├── hooks/                 # useModalKeyboard
-        ├── lib/                   # utils.ts, toast.ts
-        ├── pages/                 # one file per route
-        ├── services/api.ts        # typed API client
-        └── types/api.ts           # all TypeScript interfaces
+├── frontend/
+│   └── src/
+│       ├── components/            # reusable UI (Pagination, CreateInvoiceModal, etc.)
+│       ├── lib/                   # utils.ts, toast.ts
+│       ├── pages/                 # one file per route (16 pages)
+│       ├── services/api.ts        # typed API client (13 service objects, TSDoc comments)
+│       └── types/api.ts           # all TypeScript interfaces (TSDoc comments)
+└── context/                       # compact AI session context files (~14k tokens total)
+    ├── 01_PROJECT.md              # stack, architecture decisions, module status
+    ├── 02_STATUS.md               # completeness %, open gaps, session history
+    ├── 03_DATA_MODEL.md           # all entities, relationships, FIFO algorithm
+    ├── 04_API.md                  # all endpoints, service objects, TS interfaces
+    ├── 05_FRONTEND.md             # routes, pages, components, state patterns
+    └── 06_CODE_PATTERNS.md        # endpoint/page/migration templates
 ```

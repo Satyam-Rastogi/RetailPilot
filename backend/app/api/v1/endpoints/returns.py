@@ -17,7 +17,12 @@ from app.schemas.return_receipt import (
 router = APIRouter()
 
 
-@router.get("/", response_model=List[dict])
+@router.get(
+    "/",
+    response_model=List[dict],
+    summary="List returns",
+    description="Returns list of goods returns. Filterable by `reason_category`, `is_partial`, `date_from`, and `date_to`. Ordered by return date descending.",
+)
 def get_returns(
     skip: int = 0,
     limit: int = 100,
@@ -85,7 +90,13 @@ def get_returns(
     return result
 
 
-@router.get("/{return_id}", response_model=dict)
+@router.get(
+    "/{return_id}",
+    response_model=dict,
+    summary="Get return detail",
+    description="Returns full detail for a single goods return: line items, credit amounts, reason categories, and related stock audit records.",
+    responses={404: {"description": "Return not found"}},
+)
 def get_return(return_id: int, db: Session = Depends(get_db)):
     return_receipt = db.query(ReturnReceiptModel).filter(ReturnReceiptModel.id == return_id).first()
 
@@ -146,7 +157,25 @@ def get_return(return_id: int, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/", response_model=dict)
+@router.post(
+    "/",
+    response_model=dict,
+    status_code=201,
+    summary="Create goods return",
+    description=(
+        "Records a goods return against an existing invoice.\n\n"
+        "**Side effects (in order):**\n"
+        "1. Validates return quantities against original invoice line items.\n"
+        "2. Restores stock for each returned item (writes `StockAudit`).\n"
+        "3. Creates a `credit_note` payment for `total_credit`.\n"
+        "4. FIFO-allocates the credit note against the customer's outstanding invoices.\n\n"
+        "A partial return (`is_partial=true`) is recorded when not all items from the invoice are returned."
+    ),
+    responses={
+        400: {"description": "Invalid return quantities, or no invoice/customer data"},
+        404: {"description": "Invoice or item not found"},
+    },
+)
 def create_return(return_data: ReturnReceiptCreate, db: Session = Depends(get_db)):
     # ── Validate and resolve customer/invoice ─────────────────────────────────
     invoice = None
@@ -309,7 +338,20 @@ def create_return(return_data: ReturnReceiptCreate, db: Session = Depends(get_db
     }
 
 
-@router.delete("/{return_id}", response_model=dict)
+@router.delete(
+    "/{return_id}",
+    response_model=dict,
+    summary="Delete return (full reversal)",
+    description=(
+        "Fully reverses a goods return:\n\n"
+        "1. Removes the FIFO allocation for the `credit_note` payment.\n"
+        "2. Deletes the `credit_note` payment.\n"
+        "3. Restores invoice `amount_paid` and `payment_status`.\n"
+        "4. Deducts stock for each returned item (undoes the stock restore).\n"
+        "5. Deletes all `ReturnLineItem` records and the `ReturnReceipt`."
+    ),
+    responses={404: {"description": "Return not found"}},
+)
 def delete_return(return_id: int, db: Session = Depends(get_db)):
     """
     Delete a return receipt and fully reverse its effects:
@@ -376,7 +418,13 @@ def delete_return(return_id: int, db: Session = Depends(get_db)):
     return {'detail': f'Return #{return_id} deleted and all effects reversed'}
 
 
-@router.put("/{return_id}", response_model=dict)
+@router.put(
+    "/{return_id}",
+    response_model=dict,
+    summary="Update return notes",
+    description="Updates the `notes` field on a return receipt. Other fields are immutable — delete and recreate the return to correct quantities.",
+    responses={404: {"description": "Return not found"}},
+)
 def update_return(return_id: int, return_data: dict, db: Session = Depends(get_db)):
     """
     Update a return.

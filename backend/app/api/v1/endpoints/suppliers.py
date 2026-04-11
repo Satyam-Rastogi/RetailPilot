@@ -10,7 +10,12 @@ from app.utils.pagination import paginate_query
 router = APIRouter()
 
 
-@router.get("/", response_model=PaginatedResponse[SupplierListResponse])
+@router.get(
+    "/",
+    response_model=PaginatedResponse[SupplierListResponse],
+    summary="List suppliers",
+    description="Paginated supplier list with optional name search.",
+)
 def get_suppliers(
   skip: int = Query(0, ge=0),
   limit: int = Query(100, ge=1, le=100),
@@ -42,7 +47,12 @@ def get_suppliers(
   )
 
 
-@router.get("/{supplier_id}", response_model=Supplier)
+@router.get(
+    "/{supplier_id}",
+    response_model=Supplier,
+    summary="Get supplier by ID",
+    responses={404: {"description": "Supplier not found"}},
+)
 def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
   supplier = db.query(SupplierModel).filter(SupplierModel.id == supplier_id).first()
   if not supplier:
@@ -50,7 +60,12 @@ def get_supplier(supplier_id: int, db: Session = Depends(get_db)):
   return supplier
 
 
-@router.post("/", response_model=Supplier)
+@router.post(
+    "/",
+    response_model=Supplier,
+    status_code=201,
+    summary="Create supplier",
+)
 def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
   db_supplier = SupplierModel(**supplier.model_dump())
   db.add(db_supplier)
@@ -59,7 +74,12 @@ def create_supplier(supplier: SupplierCreate, db: Session = Depends(get_db)):
   return db_supplier
 
 
-@router.put("/{supplier_id}", response_model=Supplier)
+@router.put(
+    "/{supplier_id}",
+    response_model=Supplier,
+    summary="Update supplier",
+    responses={404: {"description": "Supplier not found"}},
+)
 def update_supplier(supplier_id: int, supplier: SupplierUpdate, db: Session = Depends(get_db)):
   db_supplier = db.query(SupplierModel).filter(SupplierModel.id == supplier_id).first()
   if not db_supplier:
@@ -73,7 +93,11 @@ def update_supplier(supplier_id: int, supplier: SupplierUpdate, db: Session = De
   return db_supplier
 
 
-@router.delete("/{supplier_id}")
+@router.delete(
+    "/{supplier_id}",
+    summary="Delete supplier",
+    responses={404: {"description": "Supplier not found"}},
+)
 def delete_supplier(supplier_id: int, db: Session = Depends(get_db)):
   db_supplier = db.query(SupplierModel).filter(SupplierModel.id == supplier_id).first()
   if not db_supplier:

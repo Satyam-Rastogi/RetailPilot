@@ -6,8 +6,20 @@ from app.schemas.stock import StockAdjust
 
 router = APIRouter()
 
-@router.post("/items/{item_id}/stock")
-def adjust_stock(item_id: int, payload: StockAdjust, db: Session = Depends(get_db)):
+@router.post(
+    "/items/{item_id}/stock",
+    summary="Manual stock adjustment",
+    description=(
+        "Adjusts the stock quantity for an item by `delta` (positive = add, negative = deduct).\n\n"
+        "Writes a `StockAudit` record with the delta, resulting quantity, and reason string.\n\n"
+        "Returns 400 if the adjustment would result in negative stock."
+    ),
+    responses={
+        400: {"description": "Stock cannot go negative"},
+        404: {"description": "Item not found"},
+    },
+)
+def adjust_stock_simple(item_id: int, payload: StockAdjust, db: Session = Depends(get_db)):
   item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
   if not item:
     raise HTTPException(status_code=404, detail="Item not found")

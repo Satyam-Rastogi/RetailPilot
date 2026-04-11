@@ -169,14 +169,22 @@ export default function InvoiceDetailPage() {
     if (hasPerItemRates) {
       perRateTaxEntries.forEach(([rate, { tax }]) => {
         if (Number(rate) > 0) {
-          taxLines.push(`CGST (${(Number(rate) / 2).toFixed(1)}%): ${formatCurrency(tax / 2)}`)
-          taxLines.push(`SGST (${(Number(rate) / 2).toFixed(1)}%): ${formatCurrency(tax / 2)}`)
+          if (interState) {
+            taxLines.push(`IGST (${Number(rate).toFixed(1)}%): ${formatCurrency(tax)}`)
+          } else {
+            taxLines.push(`CGST (${(Number(rate) / 2).toFixed(1)}%): ${formatCurrency(tax / 2)}`)
+            taxLines.push(`SGST (${(Number(rate) / 2).toFixed(1)}%): ${formatCurrency(tax / 2)}`)
+          }
         }
       })
     } else if ((invoice.tax_rate ?? 0) > 0) {
-      const taxHalf = invoice.total_tax_amount / 2
-      taxLines.push(`CGST (${((invoice.tax_rate ?? 0) / 2).toFixed(1)}%): ${formatCurrency(taxHalf)}`)
-      taxLines.push(`SGST (${((invoice.tax_rate ?? 0) / 2).toFixed(1)}%): ${formatCurrency(taxHalf)}`)
+      if (interState) {
+        taxLines.push(`IGST (${(invoice.tax_rate ?? 0).toFixed(1)}%): ${formatCurrency(invoice.total_tax_amount)}`)
+      } else {
+        const taxHalf = invoice.total_tax_amount / 2
+        taxLines.push(`CGST (${((invoice.tax_rate ?? 0) / 2).toFixed(1)}%): ${formatCurrency(taxHalf)}`)
+        taxLines.push(`SGST (${((invoice.tax_rate ?? 0) / 2).toFixed(1)}%): ${formatCurrency(taxHalf)}`)
+      }
     }
 
     const lines = [

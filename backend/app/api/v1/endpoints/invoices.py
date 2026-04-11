@@ -17,6 +17,8 @@ from app.models.return_receipt import ReturnReceiptModel, ReturnLineItemModel
 from app.models.stock_audit import StockAuditModel
 from app.schemas.invoice import (
   InvoiceLineItemCreate,
+  InvoiceListResponse,
+  InvoiceSummaryResponse,
 )
 from app.schemas.customer import CustomerCreate
 from app.schemas.pagination import PaginatedResponse
@@ -38,7 +40,18 @@ def generate_invoice_number(year: int, sequence: int, customer_type: str) -> str
   return f"INV-{year}-{str(sequence).zfill(4)}-{suffix}"
 
 
-@router.get("/", response_model=PaginatedResponse[dict])
+@router.get(
+    "/",
+    response_model=PaginatedResponse[InvoiceListResponse],
+    summary="List invoices",
+    description=(
+        "Paginated invoice list with 7 filter params and 4 sort fields.\n\n"
+        "**Filters:** `date_from`, `date_to`, `customer_id`, `customer_name` (partial), "
+        "`invoice_number` (partial), `payment_status` (`paid`/`partial`/`unpaid`), `overdue_only`.\n\n"
+        "**Sort fields:** `invoice_date` (default), `grand_total`, `payment_status`, `customer_name`."
+    ),
+    responses={400: {"description": "Invalid date format — use YYYY-MM-DD"}},
+)
 def get_invoices(
   skip: int = Query(0, ge=0),
   limit: int = Query(100, ge=1, le=500),
@@ -117,18 +130,18 @@ def get_invoices(
 
   result = []
   for invoice in data:
-    result.append({
-      'id': invoice.id,
-      'invoice_number': invoice.invoice_number,
-      'invoice_date': invoice.invoice_date.isoformat(),
-      'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
-      'customer_id': invoice.customer_id,
-      'customer_name': invoice.customer.name if invoice.customer else None,
-      'customer_type': invoice.customer.customer_type if invoice.customer else None,
-      'total_amount': invoice.grand_total,
-      'amount_paid': invoice.amount_paid,
-      'payment_status': invoice.payment_status.value,
-    })
+    result.append(InvoiceListResponse(
+      id=invoice.id,
+      invoice_number=invoice.invoice_number,
+      invoice_date=invoice.invoice_date.isoformat(),
+      due_date=invoice.due_date.isoformat() if invoice.due_date else None,
+      customer_id=invoice.customer_id,
+      customer_name=invoice.customer.name if invoice.customer else None,
+      customer_type=invoice.customer.customer_type if invoice.customer else None,
+      total_amount=invoice.grand_total,
+      amount_paid=invoice.amount_paid,
+      payment_status=invoice.payment_status.value,
+    ))
 
   return PaginatedResponse(
     data=result,
@@ -141,9 +154,13 @@ def get_invoices(
   )
 
 
-@router.get("/summary/", response_model=dict)
+@router.get(
+    "/summary/",
+    response_model=InvoiceSummaryResponse,
+    summary="Invoice KPI summary",
+    description="Aggregated invoice counts and outstanding amounts grouped by payment status. Used by the dashboard KPI cards. Single SQL aggregate — no per-row iteration.",
+)
 def get_invoices_summary(db: Session = Depends(get_db)):
-  """Aggregated invoice totals — used by dashboard KPI cards (no full scan in app layer)."""
   rows = (
     db.query(
       InvoiceModel.payment_status,
@@ -169,7 +186,13 @@ def get_invoices_summary(db: Session = Depends(get_db)):
   }
 
 
-@router.get("/export/", response_class=StreamingResponse)
+@router.get(
+    "/export/",
+    response_class=StreamingResponse,
+    summary="Export invoices as CSV",
+    description="Streams a CSV file with the same filters as the list endpoint. Includes invoice number, dates, customer, amounts, and status columns.",
+    responses={200: {"content": {"text/csv": {}}, "description": "CSV file download"}},
+)
 def export_invoices_csv(
   date_from: Optional[str] = Query(None),
   date_to: Optional[str] = Query(None),
@@ -242,7 +265,13 @@ def export_invoices_csv(
   )
 
 
-@router.get("/{invoice_id}", response_model=dict)
+@router.get(
+    "/{invoice_id}",
+    response_model=dict,
+    summary="Get invoice detail",
+    description="Returns full invoice detail including line items, returns, and payment allocations.",
+    responses={404: {"description": "Invoice not found"}},
+)
 def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
   invoice = db.query(InvoiceModel).options(joinedload(InvoiceModel.customer)).filter(InvoiceModel.id == invoice_id).first()
   if not invoice:
@@ -315,7 +344,12 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
   }
 
 
-@router.post("/calculate", response_model=dict)
+@router.post(
+    "/calculate",
+    response_model=dict,
+    summary="Preview invoice totals",
+    description="Calculates sub_total, discount, tax, and grand_total without creating an invoice. Used by the create-invoice form to show a live preview.",
+)
 def calculate_invoice_totals(invoice_data: dict, db: Session = Depends(get_db)):
   line_items = [
     {
@@ -337,7 +371,24 @@ def calculate_invoice_totals(invoice_data: dict, db: Session = Depends(get_db)):
   return result
 
 
-@router.post("/", response_model=dict)
+@router.post(
+    "/",
+    response_model=dict,
+    status_code=201,
+    summary="Create invoice",
+    description=(
+        "Creates an invoice with automatic invoice numbering and stock deduction.\n\n"
+        "**Side effects:**\n"
+        "- Stock is deducted for each line item.\n"
+        "- Invoice sequence counter is incremented (per calendar year, per WS/RE suffix).\n"
+        "- Either `customer_id` or `new_customer` (inline creation) must be provided.\n\n"
+        "**Invoice number format:** `INV-{YEAR}-{0001}-{WS|RE}`"
+    ),
+    responses={
+        400: {"description": "Neither customer_id nor new_customer provided, or invalid data"},
+        404: {"description": "Customer or item not found"},
+    },
+)
 def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
   customer = None
 
@@ -501,16 +552,25 @@ def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
   }
 
 
-@router.post("/counter-sale/", response_model=dict)
+@router.post(
+    "/counter-sale/",
+    response_model=dict,
+    status_code=201,
+    summary="Counter sale — invoice + payment in one step",
+    description=(
+        "Creates an invoice and records an immediate full payment in a **single atomic transaction**. "
+        "Designed for walk-in / retail counter sales where payment is collected upfront.\n\n"
+        "**Extra fields** (vs regular invoice creation):\n"
+        "- `payment_method`: `cash` / `upi` / `card` / `cheque` / `bank_transfer`\n"
+        "- `amount_paid`: amount tendered — may exceed grand_total, surplus returned as `change_due`\n\n"
+        "**Returns** the invoice record plus `change_due`."
+    ),
+    responses={
+        400: {"description": "Insufficient stock, or invalid customer/item data"},
+        404: {"description": "Customer or item not found"},
+    },
+)
 def create_counter_sale(invoice_data: dict, db: Session = Depends(get_db)):
-  """
-  One-step counter sale: creates an invoice and immediately records a payment
-  in a single transaction. Intended for walk-in / retail counter sales.
-
-  Extra fields vs regular invoice creation:
-    - payment_method: str  (cash/upi/card/cheque/bank_transfer)
-    - amount_paid: float   (amount tendered; may exceed grand_total → change_due)
-  """
   payment_method = invoice_data.pop('payment_method', 'cash')
   amount_paid = float(invoice_data.pop('amount_paid', 0))
 
@@ -694,7 +754,19 @@ def create_counter_sale(invoice_data: dict, db: Session = Depends(get_db)):
   }
 
 
-@router.delete("/{invoice_id}")
+@router.delete(
+    "/{invoice_id}",
+    summary="Delete invoice",
+    description=(
+        "Deletes an invoice and restores stock for each line item.\n\n"
+        "**Blocked** if `amount_paid > 0` — delete all associated payments first.\n\n"
+        "Stock is restored and a `StockAudit` record is written for each line item."
+    ),
+    responses={
+        400: {"description": "Invoice has payments applied — cannot delete"},
+        404: {"description": "Invoice not found"},
+    },
+)
 def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
     db_invoice = db.query(InvoiceModel).filter(InvoiceModel.id == invoice_id).first()
     if not db_invoice:
@@ -722,11 +794,24 @@ def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
     return {"message": "Invoice deleted successfully"}
 
 
-@router.put("/{invoice_id}", response_model=dict)
+@router.put(
+    "/{invoice_id}",
+    response_model=dict,
+    summary="Update invoice",
+    description=(
+        "Updates an existing invoice. Handles date changes, discount/tax updates, and line item edits.\n\n"
+        "**Stock guard:** only the net quantity delta is applied to stock — no double-deduction on edit.\n\n"
+        "Recalculates all totals after applying changes."
+    ),
+    responses={
+        400: {"description": "Invalid data or stock constraint violated"},
+        404: {"description": "Invoice not found"},
+    },
+)
 def update_invoice(invoice_id: int, invoice_data: dict, db: Session = Depends(get_db)):
     """
     Update an invoice.
-    
+
     Handles:
     - Invoice date changes
     - Discount/tax rate updates

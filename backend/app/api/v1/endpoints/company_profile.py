@@ -8,7 +8,13 @@ from app.schemas.company_profile import CompanyProfile, CompanyProfileCreate, Co
 router = APIRouter()
 
 
-@router.get("/", response_model=CompanyProfile)
+@router.get(
+    "/",
+    response_model=CompanyProfile,
+    summary="Get company profile",
+    description="Returns the single company/shop profile record. Used to populate the print header on invoices and receipts.",
+    responses={404: {"description": "Profile not yet created — use POST to create it"}},
+)
 def get_company_profile(db: Session = Depends(get_db)):
   profile = db.query(CompanyProfileModel).first()
   if not profile:
@@ -16,7 +22,14 @@ def get_company_profile(db: Session = Depends(get_db)):
   return profile
 
 
-@router.post("/", response_model=CompanyProfile)
+@router.post(
+    "/",
+    response_model=CompanyProfile,
+    status_code=201,
+    summary="Create company profile",
+    description="Creates the company profile. Only one record is allowed — returns 400 if a profile already exists. Use PUT to update it.",
+    responses={400: {"description": "Company profile already exists — use PUT to update"}},
+)
 def create_company_profile(profile: CompanyProfileCreate, db: Session = Depends(get_db)):
   existing = db.query(CompanyProfileModel).first()
   if existing:
@@ -28,7 +41,12 @@ def create_company_profile(profile: CompanyProfileCreate, db: Session = Depends(
   return db_profile
 
 
-@router.put("/", response_model=CompanyProfile)
+@router.put(
+    "/",
+    response_model=CompanyProfile,
+    summary="Update company profile",
+    responses={404: {"description": "Profile not found — use POST to create it first"}},
+)
 def update_company_profile(profile: CompanyProfileUpdate, db: Session = Depends(get_db)):
   db_profile = db.query(CompanyProfileModel).first()
   if not db_profile:

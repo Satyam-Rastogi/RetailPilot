@@ -1,9 +1,9 @@
-import { useState } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
-import { FileText, Plus, X, Printer, Pencil, Trash2, RotateCcw } from 'lucide-react'
+import { FileText, Plus, X, Printer, Pencil, Trash2, RotateCcw, MessageCircle } from 'lucide-react'
 import { invoiceService, companyProfileService } from '../services/api'
 import type { Invoice, InvoiceListResponse, InvoiceLineItem, CompanyProfile, PaginatedResponse } from '../types/api'
 import Pagination from '../components/Pagination'
@@ -190,6 +190,24 @@ function SalesInvoicesPage() {
     setShowInvoiceDetail(false)
     setSelectedInvoice(null)
     setActiveTab('details')
+  }
+
+  const handleWhatsAppShare = (invoice: InvoiceListResponse, e: MouseEvent) => {
+    e.stopPropagation()
+    const shopName = company?.shop_name || 'Our Store'
+    const dateStr = new Date(invoice.invoice_date).toLocaleDateString('en-IN', {
+      day: '2-digit', month: 'short', year: 'numeric',
+    })
+    const outstanding = invoice.total_amount - (invoice.amount_paid ?? 0)
+    const lines = [
+      `*INVOICE: ${invoice.invoice_number || `INV-${invoice.id}`}*`,
+      `From: ${shopName}`,
+      `To: ${invoice.customer_name}`,
+      `Date: ${dateStr}`,
+      `*Total: ₹${invoice.total_amount.toFixed(2)}*`,
+      outstanding > 0.01 ? `*Outstanding: ₹${outstanding.toFixed(2)}*` : `*Status: PAID ✓*`,
+    ].join('\n')
+    window.open(`https://wa.me/?text=${encodeURIComponent(lines)}`, '_blank')
   }
 
   const handleSaveEdit = () => {
@@ -471,9 +489,12 @@ function SalesInvoicesPage() {
               </thead>
               <tbody className="divide-y divide-line">
                 {invoices.data.map((invoice: InvoiceListResponse) => {
-                  const isOverdue = invoice.due_date &&
-                    invoice.payment_status !== 'paid' &&
-                    new Date(invoice.due_date) < new Date()
+                  const now = new Date()
+                  const dueDate = invoice.due_date ? new Date(invoice.due_date) : null
+                  const isOverdue = dueDate && invoice.payment_status !== 'paid' && dueDate < now
+                  const daysOverdue = isOverdue
+                    ? Math.floor((now.getTime() - dueDate!.getTime()) / (1000 * 60 * 60 * 24))
+                    : 0
                   return (
                     <tr key={invoice.id} className="hover:bg-ink hover:text-surface transition-colors group cursor-pointer">
                       <td className="px-4 py-3">
@@ -486,10 +507,14 @@ function SalesInvoicesPage() {
                         {format(new Date(invoice.invoice_date), 'dd MMM yyyy')}
                       </td>
                       <td className="px-4 py-3 font-mono text-sm">
-                        {invoice.due_date ? (
+                        {dueDate ? (
                           <span className={cn(isOverdue ? 'text-danger group-hover:text-surface' : 'text-ink-light group-hover:text-surface/70')}>
-                            {format(new Date(invoice.due_date), 'dd MMM yyyy')}
-                            {isOverdue && <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-danger text-on-status font-mono uppercase">Overdue</span>}
+                            {format(dueDate, 'dd MMM yyyy')}
+                            {isOverdue && (
+                              <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-danger text-on-status font-mono uppercase whitespace-nowrap">
+                                {daysOverdue}d overdue
+                              </span>
+                            )}
                           </span>
                         ) : (
                           <span className="text-ink-muted">—</span>
@@ -517,6 +542,13 @@ function SalesInvoicesPage() {
                             title="View"
                           >
                             View
+                          </button>
+                          <button
+                            onClick={(e) => handleWhatsAppShare(invoice, e)}
+                            className="p-1.5 border border-transparent hover:border-[#25D366] hover:text-[#25D366] group-hover:border-surface/40 group-hover:text-surface transition-all brutal-focus"
+                            title="Share on WhatsApp"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
                           </button>
                           <button
                             onClick={(e) => { e.stopPropagation(); handleEditInvoice(invoice) }}
@@ -571,12 +603,17 @@ function SalesInvoicesPage() {
                 </h2>
                 <p className="font-mono text-xs text-surface/60 uppercase tracking-widest mt-0.5">
                   {format(new Date(invoiceDetail.invoice_date!), 'dd MMM yyyy')}
-                  {(invoiceDetail as any).due_date && (
-                    <span className={cn('ml-3', (invoiceDetail as any).payment_status !== 'paid' && new Date((invoiceDetail as any).due_date) < new Date() ? 'text-danger' : '')}>
-                      / Due: {format(new Date((invoiceDetail as any).due_date), 'dd MMM yyyy')}
-                      {(invoiceDetail as any).payment_status !== 'paid' && new Date((invoiceDetail as any).due_date) < new Date() && ' (Overdue)'}
-                    </span>
-                  )}
+                  {(invoiceDetail as any).due_date && (() => {
+                    const due = new Date((invoiceDetail as any).due_date)
+                    const overdue = (invoiceDetail as any).payment_status !== 'paid' && due < new Date()
+                    const days = overdue ? Math.floor((new Date().getTime() - due.getTime()) / (1000 * 60 * 60 * 24)) : 0
+                    return (
+                      <span className={cn('ml-3', overdue ? 'text-danger' : '')}>
+                        / Due: {format(due, 'dd MMM yyyy')}
+                        {overdue && ` (${days}d overdue)`}
+                      </span>
+                    )
+                  })()}
                 </p>
               </div>
               <div className="flex gap-2">

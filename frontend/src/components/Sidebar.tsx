@@ -1,27 +1,39 @@
-import { NavLink, useLocation } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { useState } from 'react'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import {
   LayoutDashboard, FileText, Users, BookOpen, Building2,
-  Package, RotateCcw, Search, Settings, ChevronLeft, Sun, Moon, X, BarChart2, CalendarDays, TrendingUp,
+  Package, RotateCcw, Search, Settings, ChevronLeft, Sun, Moon, X,
+  BarChart2, CalendarDays, TrendingUp, LineChart, ChevronDown,
+  Star, Boxes,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from './ThemeProvider'
 import { useSettings } from './SettingsProvider'
 import api from '../services/api'
 
-const NAV_ITEMS = [
-  { name: 'Dashboard', path: '/', icon: LayoutDashboard },
-  { name: 'Invoices', path: '/invoices', icon: FileText },
-  { name: 'Customers', path: '/customers', icon: Users },
-  { name: 'Ledgers', path: '/customers/wholesale-ledgers', icon: BookOpen },
-  { name: 'Suppliers', path: '/suppliers', icon: Building2 },
-  { name: 'Inventory', path: '/items', icon: Package },
-  { name: 'Returns', path: '/returns', icon: RotateCcw },
-  { name: 'Stock Audit', path: '/stock-audit', icon: Search },
-  { name: 'Aging Report', path: '/reports/aging', icon: BarChart2 },
-  { name: 'Daily Summary', path: '/reports/daily', icon: CalendarDays },
-  { name: 'Revenue', path: '/reports/revenue', icon: TrendingUp },
+const MAIN_NAV = [
+  { name: 'Dashboard',   path: '/',                         icon: LayoutDashboard },
+  { name: 'Invoices',    path: '/invoices',                  icon: FileText },
+  { name: 'Customers',   path: '/customers',                 icon: Users },
+  { name: 'Ledgers',     path: '/customers/wholesale-ledgers', icon: BookOpen },
+  { name: 'Suppliers',   path: '/suppliers',                 icon: Building2 },
+  { name: 'Inventory',   path: '/items',                     icon: Package },
+  { name: 'Returns',     path: '/returns',                   icon: RotateCcw },
+  { name: 'Stock Audit', path: '/stock-audit',               icon: Search },
+]
+
+const ANALYTICS_NAV = [
+  { name: 'Hub',          path: '/analytics',               icon: LineChart },
+  { name: 'Best Sellers', path: '/analytics/best-sellers',  icon: Star },
+  { name: 'Stock Intel',  path: '/analytics/inventory',     icon: Boxes },
+  { name: 'Revenue',      path: '/reports/revenue',         icon: TrendingUp },
+  { name: 'Aging',        path: '/reports/aging',           icon: BarChart2 },
+  { name: 'Daily Summary',path: '/reports/daily',           icon: CalendarDays },
+]
+
+const BOTTOM_NAV = [
   { name: 'Settings', path: '/settings', icon: Settings },
 ]
 
@@ -33,9 +45,13 @@ interface SidebarProps {
 }
 
 export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOpen }: SidebarProps) {
-  const location = useLocation()
-  const { theme, setTheme } = useTheme()
+  const location  = useLocation()
+  const navigate  = useNavigate()
+  const { theme, setTheme }         = useTheme()
   const { userName, userDesignation } = useSettings()
+
+  const analyticsActive = location.pathname.startsWith('/analytics') || location.pathname.startsWith('/reports/')
+  const [analyticsOpen, setAnalyticsOpen] = useState(analyticsActive)
 
   const { data: lowStockCount } = useQuery<number>({
     queryKey: ['low-stock-count'],
@@ -43,6 +59,39 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
     refetchInterval: 60_000,
     staleTime: 30_000,
   })
+
+  const NavItem = ({ item }: { item: { name: string; path: string; icon: React.ElementType } }) => {
+    const isActive =
+      location.pathname === item.path ||
+      (item.path !== '/' && item.path !== '/analytics' && location.pathname.startsWith(item.path + '/'))
+    return (
+      <NavLink
+        to={item.path}
+        onClick={() => setIsMobileOpen(false)}
+        title={!isExpanded ? item.name : undefined}
+        className={cn(
+          'relative flex items-center gap-3 py-2.5 transition-all group border-l-[3px] brutal-focus outline-none',
+          isExpanded ? 'justify-start px-3' : 'justify-center px-0',
+          isActive
+            ? 'border-l-accent bg-accent-subtle text-ink'
+            : 'border-l-transparent text-ink-light hover:border-l-accent hover:text-accent hover:bg-accent-subtle'
+        )}
+      >
+        <item.icon className={cn('w-5 h-5 shrink-0 transition-colors', isActive ? 'text-accent' : 'text-ink-light group-hover:text-accent')} />
+        {isExpanded && (
+          <span className="font-mono text-sm uppercase tracking-wider whitespace-nowrap flex-1">{item.name}</span>
+        )}
+        {item.path === '/items' && (lowStockCount ?? 0) > 0 && (
+          <span className={cn(
+            'flex items-center justify-center text-[10px] font-mono font-bold min-w-[18px] h-[18px] px-1 bg-danger text-on-status',
+            !isExpanded && 'absolute top-1 right-1',
+          )}>
+            {lowStockCount}
+          </span>
+        )}
+      </NavLink>
+    )
+  }
 
   const sidebarContent = (
     <div className="flex flex-col h-full bg-paper border-r border-line">
@@ -70,43 +119,65 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
         </button>
       </div>
 
-      {/* Nav Items */}
-      <nav className={cn('flex-1 py-6 space-y-1 overflow-y-auto', isExpanded ? 'px-3' : 'px-2')}>
-        {NAV_ITEMS.map((item) => {
-          const isActive =
-            location.pathname === item.path ||
-            (item.path !== '/' &&
-             location.pathname.startsWith(item.path + '/') &&
-             !NAV_ITEMS.some(other => other.path !== item.path && location.pathname === other.path))
-          return (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              onClick={() => setIsMobileOpen(false)}
-              title={!isExpanded ? item.name : undefined}
+      {/* Nav */}
+      <nav className={cn('flex-1 py-6 overflow-y-auto', isExpanded ? 'px-3' : 'px-2')}>
+        <div className="space-y-1">
+          {MAIN_NAV.map(item => <NavItem key={item.path} item={item} />)}
+        </div>
+
+        {/* Analytics group */}
+        <div className="mt-4">
+          {isExpanded ? (
+            <>
+              <button
+                onClick={() => setAnalyticsOpen(o => !o)}
+                className={cn(
+                  'w-full flex items-center justify-between px-3 py-2 border-l-[3px] transition-all brutal-focus outline-none',
+                  analyticsActive
+                    ? 'border-l-accent text-accent'
+                    : 'border-l-transparent text-ink-light hover:border-l-accent hover:text-accent',
+                )}
+              >
+                <div className="flex items-center gap-3">
+                  <LineChart className="w-5 h-5 shrink-0" />
+                  <span className="font-mono text-sm uppercase tracking-wider">Analytics</span>
+                </div>
+                <ChevronDown className={cn('w-4 h-4 transition-transform', analyticsOpen && 'rotate-180')} />
+              </button>
+              <AnimatePresence initial={false}>
+                {analyticsOpen && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden pl-4 border-l border-line ml-3 mt-1 space-y-0.5"
+                  >
+                    {ANALYTICS_NAV.map(item => <NavItem key={item.path} item={item} />)}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </>
+          ) : (
+            /* Collapsed: single icon that navigates to hub */
+            <button
+              onClick={() => navigate('/analytics')}
+              title="Analytics"
               className={cn(
-                'relative flex items-center gap-3 py-2.5 transition-all group border-l-[3px] brutal-focus outline-none',
-                isExpanded ? 'justify-start px-3' : 'justify-center px-0',
-                isActive
-                  ? 'border-l-accent bg-accent-subtle text-ink'
-                  : 'border-l-transparent text-ink-light hover:border-l-accent hover:text-accent hover:bg-accent-subtle'
+                'w-full flex justify-center py-2.5 border-l-[3px] transition-all brutal-focus outline-none',
+                analyticsActive
+                  ? 'border-l-accent text-accent'
+                  : 'border-l-transparent text-ink-light hover:border-l-accent hover:text-accent hover:bg-accent-subtle',
               )}
             >
-              <item.icon className={cn('w-5 h-5 shrink-0 transition-colors', isActive ? 'text-accent' : 'text-ink-light group-hover:text-accent')} />
-              {isExpanded && (
-                <span className="font-mono text-sm uppercase tracking-wider whitespace-nowrap flex-1">{item.name}</span>
-              )}
-              {item.path === '/items' && (lowStockCount ?? 0) > 0 && (
-                <span className={cn(
-                  'flex items-center justify-center text-[10px] font-mono font-bold min-w-[18px] h-[18px] px-1 bg-danger text-on-status',
-                  !isExpanded && 'absolute top-1 right-1',
-                )}>
-                  {lowStockCount}
-                </span>
-              )}
-            </NavLink>
-          )
-        })}
+              <LineChart className="w-5 h-5 shrink-0" />
+            </button>
+          )}
+        </div>
+
+        <div className="mt-4 space-y-1">
+          {BOTTOM_NAV.map(item => <NavItem key={item.path} item={item} />)}
+        </div>
       </nav>
 
       {/* Footer */}
@@ -124,7 +195,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
             <Moon className="w-5 h-5 text-ink-light group-hover:text-accent shrink-0" />
           )}
           {isExpanded && (
-            <span className="font-mono text-xs uppercase tracking-wider text-ink-light group-hover:text-accent">
+            <span className="font-mono text-sm uppercase tracking-wider text-ink-light group-hover:text-accent">
               {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
             </span>
           )}
@@ -157,8 +228,6 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
         >
           {sidebarContent}
         </motion.aside>
-
-        {/* Desktop Toggle Button */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
           className="absolute top-7 -right-3 w-6 h-6 bg-paper border border-line flex items-center justify-center text-ink hover:text-accent hover:border-accent transition-all z-50 brutal-shadow-hover outline-none"

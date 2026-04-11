@@ -58,3 +58,30 @@ class InvoiceBase(BaseModel):
 class InvoiceCreate(InvoiceBase):
   line_items: List[InvoiceLineItemCreate]
   new_customer: Optional[InlineCustomer] = None
+
+
+class InvoiceListResponse(BaseModel):
+  """Compact invoice view returned by the paginated list endpoint."""
+  id: int
+  invoice_number: Optional[str] = None
+  invoice_date: str
+  due_date: Optional[str] = None
+  customer_id: int
+  customer_name: Optional[str] = None
+  customer_type: Optional[str] = None
+  total_amount: float
+  amount_paid: Optional[float] = None
+  payment_status: str
+
+
+class InvoiceStatusCount(BaseModel):
+  count: int
+  outstanding: float
+
+
+class InvoiceSummaryResponse(BaseModel):
+  """Dashboard KPI aggregate — counts and outstanding amounts per payment status."""
+  paid: InvoiceStatusCount
+  partial: InvoiceStatusCount
+  unpaid: InvoiceStatusCount
+  total_outstanding: float

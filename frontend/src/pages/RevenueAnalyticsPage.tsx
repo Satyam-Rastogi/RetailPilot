@@ -66,19 +66,22 @@ function RevenueTooltip({ active, payload, label }: any) {
   const wholesale = payload.find((p: any) => p.dataKey === 'wholesale')?.value ?? 0
   const total = retail + wholesale
   return (
-    <div className="bg-paper border border-line p-3 text-xs font-mono shadow-sm min-w-[160px]">
-      <div className="text-ink-light uppercase tracking-widest mb-2">{label}</div>
+    <div
+      className="p-3 text-xs font-mono min-w-[160px] pointer-events-none"
+      style={{ backgroundColor: 'rgba(8,8,8,0.93)', border: '1px solid rgba(255,255,255,0.12)', color: '#f0f0f0' }}
+    >
+      <div className="uppercase tracking-widest mb-2" style={{ color: 'rgba(240,240,240,0.5)' }}>{label}</div>
       <div className="space-y-1">
         <div className="flex justify-between gap-6">
-          <span className="text-accent">Retail</span>
+          <span style={{ color: 'var(--theme-accent)' }}>Retail</span>
           <span className="font-bold">{fmt(retail)}</span>
         </div>
         <div className="flex justify-between gap-6">
-          <span className="text-success">Wholesale</span>
+          <span style={{ color: 'var(--theme-success)' }}>Wholesale</span>
           <span className="font-bold">{fmt(wholesale)}</span>
         </div>
-        <div className="flex justify-between gap-6 border-t border-line pt-1 mt-1">
-          <span className="text-ink-light">Total</span>
+        <div className="flex justify-between gap-6 pt-1 mt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+          <span style={{ color: 'rgba(240,240,240,0.5)' }}>Total</span>
           <span className="font-bold">{fmt(total)}</span>
         </div>
       </div>
@@ -215,7 +218,7 @@ export default function RevenueAnalyticsPage() {
                       tickMargin={8}
                       fontFamily="JetBrains Mono, monospace"
                     />
-                    <Tooltip content={<RevenueTooltip />} cursor={{ fill: 'var(--theme-line-subtle)' }} />
+                    <Tooltip content={<RevenueTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Bar dataKey="retail" stackId="a" fill="var(--theme-accent)" radius={[0, 0, 0, 0]} maxBarSize={48} animationDuration={800} />
                     <Bar dataKey="wholesale" stackId="a" fill="var(--theme-success)" radius={[2, 2, 0, 0]} maxBarSize={48} animationDuration={800} />
                   </BarChart>

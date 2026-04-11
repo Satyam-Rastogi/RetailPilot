@@ -18,6 +18,9 @@ import DailySummaryPage from './pages/DailySummaryPage'
 import RevenueAnalyticsPage from './pages/RevenueAnalyticsPage'
 import CustomerStatementPage from './pages/CustomerStatementPage'
 import NotFoundPage from './pages/NotFoundPage'
+import AnalyticsHubPage from './pages/AnalyticsHubPage'
+import InventoryAnalyticsPage from './pages/InventoryAnalyticsPage'
+import BestSellersPage from './pages/BestSellersPage'
 
 function App() {
   return (
@@ -40,6 +43,9 @@ function App() {
           <Route path="/reports/aging" element={<AgingReportPage />} />
           <Route path="/reports/daily" element={<DailySummaryPage />} />
           <Route path="/reports/revenue" element={<RevenueAnalyticsPage />} />
+          <Route path="/analytics" element={<AnalyticsHubPage />} />
+          <Route path="/analytics/inventory" element={<InventoryAnalyticsPage />} />
+          <Route path="/analytics/best-sellers" element={<BestSellersPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </ErrorBoundary>

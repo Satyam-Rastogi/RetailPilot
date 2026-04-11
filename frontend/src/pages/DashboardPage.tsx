@@ -241,6 +241,7 @@ function DashboardPage() {
       negative: false,
       isCurrency: false,
       sparkData: organicSpark(customerCount ?? 0, 0.12),
+      href: `/invoices?from=${thisMonthStart}`,
     },
     {
       title: 'Total Suppliers',
@@ -251,6 +252,7 @@ function DashboardPage() {
       negative: false,
       isCurrency: false,
       sparkData: organicSpark(supplierCount ?? 0, 0.08),
+      href: '/suppliers',
     },
     {
       title: 'Inventory Items',
@@ -261,6 +263,7 @@ function DashboardPage() {
       negative: false,
       isCurrency: false,
       sparkData: organicSpark(itemCount ?? 0, 0.1),
+      href: '/items',
     },
     {
       title: 'Outstanding Amount',
@@ -271,6 +274,7 @@ function DashboardPage() {
       negative: true,
       isCurrency: true,
       sparkData: organicSpark(outstandingAmount ?? 0, 0.22),
+      href: '/receivables',
     },
   ]
 
@@ -483,8 +487,9 @@ function DashboardPage() {
             <motion.div
               key={kpi.title}
               variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
+              onClick={() => navigate(kpi.href)}
               className={cn(
-                'p-5 brutal-border bg-surface relative group overflow-hidden brutal-shadow-hover',
+                'p-5 brutal-border bg-surface relative group overflow-hidden brutal-shadow-hover cursor-pointer',
                 kpi.negative && 'border-2 border-danger bg-surface dark:border dark:bg-paper',
               )}
             >
@@ -522,8 +527,12 @@ function DashboardPage() {
                 />
               </div>
 
-              <div className="mt-3 pt-3 border-t border-line/50">
+              <div className="mt-3 pt-3 border-t border-line/50 flex items-end justify-between">
                 <Sparkline data={kpi.sparkData} width={120} height={24} filled />
+                <ArrowRight className={cn(
+                  'w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-all duration-200 group-hover:-rotate-45 shrink-0',
+                  kpi.negative ? 'text-danger' : 'text-accent',
+                )} />
               </div>
             </motion.div>
           )
@@ -606,7 +615,11 @@ function DashboardPage() {
           </div>
           <div className="flex flex-col gap-2 mt-4">
             {rawStatusData.map(s => (
-              <div key={s.name} className="flex items-center justify-between text-sm font-mono border-b border-line pb-2 last:border-0">
+              <div
+                key={s.name}
+                onClick={() => navigate(`/invoices?status=${s.name.toLowerCase()}`)}
+                className="flex items-center justify-between text-sm font-mono border-b border-line pb-2 last:border-0 cursor-pointer hover:opacity-70 transition-opacity"
+              >
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 border border-ink" style={{ backgroundColor: s.color }} />
                   <span className="uppercase">{s.name}</span>

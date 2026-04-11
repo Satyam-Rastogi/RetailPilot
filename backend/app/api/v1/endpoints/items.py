@@ -51,7 +51,17 @@ def _build_list_response(item: ItemModel) -> ItemListResponse:
 
 # ── Items list ─────────────────────────────────────────────────────────────────
 
-@router.get("/", response_model=PaginatedResponse[ItemListResponse])
+@router.get(
+    "/",
+    response_model=PaginatedResponse[ItemListResponse],
+    summary="List inventory items",
+    description=(
+        "Paginated catalogue of active items (`is_active=true`).\n\n"
+        "**Filters:** `search` (name / SKU / brand, partial match), `low_stock_only`, `category` (exact), `supplier_id`.\n\n"
+        "When `has_variants=true`, `current_stock_quantity` is the sum across all variants. "
+        "`is_low_stock` is computed in the app layer after DB fetch."
+    ),
+)
 def get_items(
   page: int = Query(1, ge=1),
   page_size: int = Query(20, ge=1, le=1000),
@@ -103,7 +113,16 @@ def get_items(
 
 # ── Stock audit list ───────────────────────────────────────────────────────────
 
-@router.get("/stock-audit/", response_model=PaginatedResponse[StockAuditResponse])
+@router.get(
+    "/stock-audit/",
+    response_model=PaginatedResponse[StockAuditResponse],
+    summary="Stock movement history",
+    description=(
+        "Paginated log of all stock movements.\n\n"
+        "**Filters:** `item_id`, `delta_direction` (`in`/`out`), `entry_type` (`sale`/`return`/`void`/`edit`/`manual`).\n\n"
+        "Each record includes `delta` (signed change), `delta_after` (stock level after), and `reason`."
+    ),
+)
 def get_stock_audits(
   page: int = Query(1, ge=1),
   page_size: int = Query(20, ge=1, le=100),
@@ -170,7 +189,12 @@ def get_stock_audits(
 
 # ── Item detail ────────────────────────────────────────────────────────────────
 
-@router.get("/{item_id}", response_model=Item)
+@router.get(
+    "/{item_id}",
+    response_model=Item,
+    summary="Get item by ID",
+    responses={404: {"description": "Item not found or inactive"}},
+)
 def get_item(item_id: int, db: Session = Depends(get_db)):
   item = db.query(ItemModel).options(joinedload(ItemModel.variants)).filter(ItemModel.id == item_id, ItemModel.is_active == True).first()
   if not item:
@@ -180,7 +204,13 @@ def get_item(item_id: int, db: Session = Depends(get_db)):
 
 # ── Create item ────────────────────────────────────────────────────────────────
 
-@router.post("/", response_model=Item)
+@router.post(
+    "/",
+    response_model=Item,
+    status_code=201,
+    summary="Create item",
+    description="Creates a new catalogue item. Set `has_variants=true` to manage stock at variant level instead of the parent level.",
+)
 def create_item(item: ItemCreate, db: Session = Depends(get_db)):
   db_item = ItemModel(**item.model_dump())
   db.add(db_item)
@@ -191,7 +221,12 @@ def create_item(item: ItemCreate, db: Session = Depends(get_db)):
 
 # ── Update item ────────────────────────────────────────────────────────────────
 
-@router.put("/{item_id}", response_model=Item)
+@router.put(
+    "/{item_id}",
+    response_model=Item,
+    summary="Update item",
+    responses={404: {"description": "Item not found"}},
+)
 def update_item(item_id: int, item: ItemUpdate, db: Session = Depends(get_db)):
   db_item = db.query(ItemModel).options(joinedload(ItemModel.variants)).filter(ItemModel.id == item_id).first()
   if not db_item:
@@ -207,7 +242,12 @@ def update_item(item_id: int, item: ItemUpdate, db: Session = Depends(get_db)):
 
 # ── Delete item ────────────────────────────────────────────────────────────────
 
-@router.delete("/{item_id}")
+@router.delete(
+    "/{item_id}",
+    summary="Soft-delete item",
+    description="Sets `is_active=false` on the item. The record is preserved in invoice history. The item will no longer appear in the catalogue or be selectable in new invoices.",
+    responses={404: {"description": "Item not found or already inactive"}},
+)
 def delete_item(item_id: int, db: Session = Depends(get_db)):
   db_item = db.query(ItemModel).filter(ItemModel.id == item_id, ItemModel.is_active == True).first()
   if not db_item:
@@ -219,7 +259,16 @@ def delete_item(item_id: int, db: Session = Depends(get_db)):
 
 # ── Adjust parent stock ────────────────────────────────────────────────────────
 
-@router.post("/{item_id}/stock", response_model=Item)
+@router.post(
+    "/{item_id}/stock",
+    response_model=Item,
+    summary="Adjust item stock",
+    description="Adjusts stock for a non-variant item. Positive `delta` = stock in, negative = stock out. Writes a `StockAudit` record. Use `/{item_id}/variants/{vid}/stock` for variant items.",
+    responses={
+        400: {"description": "Stock cannot go negative"},
+        404: {"description": "Item not found"},
+    },
+)
 def adjust_stock(item_id: int, payload: StockAdjust, db: Session = Depends(get_db)):
   item = db.query(ItemModel).options(joinedload(ItemModel.variants)).filter(ItemModel.id == item_id).first()
   if not item:
@@ -244,7 +293,12 @@ def adjust_stock(item_id: int, payload: StockAdjust, db: Session = Depends(get_d
 
 # ── Variant CRUD ───────────────────────────────────────────────────────────────
 
-@router.get("/{item_id}/variants/", response_model=list[ItemVariantResponse])
+@router.get(
+    "/{item_id}/variants/",
+    response_model=list[ItemVariantResponse],
+    summary="List item variants",
+    responses={404: {"description": "Item not found"}},
+)
 def get_variants(item_id: int, db: Session = Depends(get_db)):
   item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
   if not item:
@@ -252,7 +306,14 @@ def get_variants(item_id: int, db: Session = Depends(get_db)):
   return item.variants
 
 
-@router.post("/{item_id}/variants/", response_model=ItemVariantResponse)
+@router.post(
+    "/{item_id}/variants/",
+    response_model=ItemVariantResponse,
+    status_code=201,
+    summary="Create item variant",
+    description="Adds a size/colour variant to an item. Automatically sets `has_variants=true` on the parent item.",
+    responses={404: {"description": "Item not found"}},
+)
 def create_variant(item_id: int, payload: ItemVariantCreate, db: Session = Depends(get_db)):
   item = db.query(ItemModel).filter(ItemModel.id == item_id).first()
   if not item:
@@ -271,7 +332,12 @@ def create_variant(item_id: int, payload: ItemVariantCreate, db: Session = Depen
   return variant
 
 
-@router.put("/{item_id}/variants/{variant_id}", response_model=ItemVariantResponse)
+@router.put(
+    "/{item_id}/variants/{variant_id}",
+    response_model=ItemVariantResponse,
+    summary="Update item variant",
+    responses={404: {"description": "Variant not found"}},
+)
 def update_variant(item_id: int, variant_id: int, payload: ItemVariantUpdate, db: Session = Depends(get_db)):
   variant = db.query(ItemVariantModel).filter(
     ItemVariantModel.id == variant_id,
@@ -288,7 +354,11 @@ def update_variant(item_id: int, variant_id: int, payload: ItemVariantUpdate, db
   return variant
 
 
-@router.delete("/{item_id}/variants/{variant_id}")
+@router.delete(
+    "/{item_id}/variants/{variant_id}",
+    summary="Delete item variant",
+    responses={404: {"description": "Variant not found"}},
+)
 def delete_variant(item_id: int, variant_id: int, db: Session = Depends(get_db)):
   variant = db.query(ItemVariantModel).filter(
     ItemVariantModel.id == variant_id,
@@ -311,7 +381,16 @@ def delete_variant(item_id: int, variant_id: int, db: Session = Depends(get_db))
   return {"message": "Variant deleted"}
 
 
-@router.post("/{item_id}/variants/{variant_id}/stock", response_model=ItemVariantResponse)
+@router.post(
+    "/{item_id}/variants/{variant_id}/stock",
+    response_model=ItemVariantResponse,
+    summary="Adjust variant stock",
+    description="Adjusts stock for a specific variant. Writes a `StockAudit` record on the parent item.",
+    responses={
+        400: {"description": "Stock cannot go negative"},
+        404: {"description": "Variant not found"},
+    },
+)
 def adjust_variant_stock(
   item_id: int,
   variant_id: int,

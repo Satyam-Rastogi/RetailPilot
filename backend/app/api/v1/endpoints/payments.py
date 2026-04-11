@@ -88,7 +88,18 @@ def allocate_payment(
   return payment, allocations
 
 
-@router.post("/", response_model=PaymentResponse)
+@router.post(
+    "/",
+    response_model=PaymentResponse,
+    status_code=201,
+    summary="Record payment with FIFO allocation",
+    description=(
+        "Records a customer payment and automatically allocates it to outstanding invoices using **FIFO** (oldest invoice first).\n\n"
+        "If the payment exceeds all outstanding invoices, the surplus is stored as `credit_balance` on the payment record.\n\n"
+        "**Payment amount is immutable after creation.** Only `date`, `payment_method`, and `notes` can be updated."
+    ),
+    responses={404: {"description": "Customer not found"}},
+)
 def create_payment(
   payment_data: PaymentCreate,
   db: Session = Depends(get_db)
@@ -140,7 +151,12 @@ def create_payment(
   )
 
 
-@router.get("/", response_model=PaginatedResponse[PaymentResponse])
+@router.get(
+    "/",
+    response_model=PaginatedResponse[PaymentResponse],
+    summary="List payments",
+    description="Paginated payment list. Filterable by `customer_id`, `date_from`, and `date_to`.",
+)
 def get_payments(
   customer_id: Optional[int] = None,
   date_from: Optional[str] = None,
@@ -210,7 +226,12 @@ def get_payments(
   )
 
 
-@router.get("/{payment_id}", response_model=PaymentResponse)
+@router.get(
+    "/{payment_id}",
+    response_model=PaymentResponse,
+    summary="Get payment by ID",
+    responses={404: {"description": "Payment not found"}},
+)
 def get_payment(payment_id: int, db: Session = Depends(get_db)):
   payment = db.query(PaymentModel).filter(PaymentModel.id == payment_id).first()
   if not payment:
@@ -243,7 +264,17 @@ def get_payment(payment_id: int, db: Session = Depends(get_db)):
   )
 
 
-@router.patch("/{payment_id}", response_model=PaymentResponse)
+@router.patch(
+    "/{payment_id}",
+    response_model=PaymentResponse,
+    summary="Update payment metadata",
+    description=(
+        "Updates non-financial metadata only: `date`, `payment_method`, `reference_number`, `notes`.\n\n"
+        "**`amount` cannot be changed** — payment amounts are immutable after creation. "
+        "Delete and recreate the payment if the amount needs correction."
+    ),
+    responses={404: {"description": "Payment not found"}},
+)
 def update_payment(
   payment_id: int,
   payment_update: PaymentUpdate,
@@ -292,7 +323,19 @@ def update_payment(
   )
 
 
-@router.delete("/{payment_id}")
+@router.delete(
+    "/{payment_id}",
+    summary="Delete payment (full reversal)",
+    description=(
+        "Fully reverses a payment:\n\n"
+        "1. Removes all `PaymentAllocation` records for this payment.\n"
+        "2. Restores `amount_paid` on each affected invoice.\n"
+        "3. Recalculates invoice `payment_status` (Paid → Partially Paid / Unpaid).\n"
+        "4. Deletes the payment record.\n\n"
+        "This is the correct way to fix a wrong payment — there is no partial undo."
+    ),
+    responses={404: {"description": "Payment not found"}},
+)
 def delete_payment(
   payment_id: int,
   db: Session = Depends(get_db)
@@ -319,7 +362,19 @@ def delete_payment(
   return {"message": "Payment deleted successfully"}
 
 
-@router.get("/customer/{customer_id}/ledger", response_model=CustomerLedgerResponse)
+@router.get(
+    "/customer/{customer_id}/ledger",
+    response_model=CustomerLedgerResponse,
+    summary="Customer ledger — full invoice + payment history",
+    description=(
+        "Returns a customer's complete receivables ledger:\n\n"
+        "- `invoices`: all invoices with `grand_total`, `amount_paid`, `unpaid`, and `payment_status`\n"
+        "- `payments`: all payments with their FIFO allocations\n"
+        "- `total_invoiced`, `total_paid`, `total_unpaid` summary fields\n\n"
+        "Used by the per-customer Ledger page. Supports `date_from` / `date_to` range filtering."
+    ),
+    responses={404: {"description": "Customer not found"}},
+)
 def get_customer_ledger(
   customer_id: int,
   date_from: Optional[str] = None,
@@ -434,7 +489,16 @@ def get_customer_ledger(
   )
 
 
-@router.get("/customer/{customer_id}/ledger/invoices", response_model=PaginatedResponse[InvoiceLedgerResponse])
+@router.get(
+    "/customer/{customer_id}/ledger/invoices",
+    response_model=PaginatedResponse[InvoiceLedgerResponse],
+    summary="Customer invoices — paginated ledger view",
+    description="Paginated invoice list for a customer, sorted oldest-first. Used by the ledger page invoice tab.",
+    responses={
+        400: {"description": "Invalid date format — use YYYY-MM-DD"},
+        404: {"description": "Customer not found"},
+    },
+)
 def get_customer_invoices_ledger(
   customer_id: int,
   date_from: Optional[str] = None,
@@ -500,7 +564,13 @@ def get_customer_invoices_ledger(
   )
 
 
-@router.get("/invoices/{invoice_id}/allocations", response_model=List[InvoiceAllocationDetail])
+@router.get(
+    "/invoices/{invoice_id}/allocations",
+    response_model=List[InvoiceAllocationDetail],
+    summary="Invoice payment allocations",
+    description="Returns all payment allocations applied to a specific invoice, ordered by allocation date. Used by the invoice detail view.",
+    responses={404: {"description": "Invoice not found"}},
+)
 def get_invoice_allocations(
   invoice_id: int,
   db: Session = Depends(get_db)

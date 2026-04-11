@@ -13,7 +13,12 @@ from app.utils.pagination import paginate_query
 router = APIRouter()
 
 
-@router.get("/", response_model=PaginatedResponse[CustomerListResponse])
+@router.get(
+    "/",
+    response_model=PaginatedResponse[CustomerListResponse],
+    summary="List customers",
+    description="Paginated customer list. Supports name search and `created_after` date filter. Returns compact `CustomerListResponse` (no full detail).",
+)
 def get_customers(
   skip: int = Query(0, ge=0),
   limit: int = Query(100, ge=1, le=1000),
@@ -53,7 +58,21 @@ def get_customers(
   )
 
 
-@router.get("/outstanding/", response_model=List[CustomerOutstandingResponse])
+@router.get(
+    "/outstanding/",
+    response_model=List[CustomerOutstandingResponse],
+    summary="Receivables — outstanding amounts per customer",
+    description=(
+        "Returns every customer's total outstanding and overdue balances computed in a **single SQL aggregate** (no N+1).\n\n"
+        "- Walk-in Customer is always excluded.\n"
+        "- By default, customers with zero outstanding are excluded; pass `include_zero_balance=true` to include them.\n"
+        "- Results are sorted by `total_outstanding` descending.\n"
+        "- `overdue_amount` counts only invoices whose `due_date` is in the past."
+    ),
+    responses={
+        400: {"description": "Invalid `customer_type` value — must be `Retail` or `Wholesale`"},
+    },
+)
 def get_customers_outstanding(
   include_zero_balance: bool = Query(False),
   search: Optional[str] = None,
@@ -150,7 +169,12 @@ def get_customers_outstanding(
   return result
 
 
-@router.get("/{customer_id}", response_model=Customer)
+@router.get(
+    "/{customer_id}",
+    response_model=Customer,
+    summary="Get customer by ID",
+    responses={404: {"description": "Customer not found"}},
+)
 def get_customer(customer_id: int, db: Session = Depends(get_db)):
   customer = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
   if not customer:
@@ -158,7 +182,13 @@ def get_customer(customer_id: int, db: Session = Depends(get_db)):
   return customer
 
 
-@router.post("/", response_model=Customer)
+@router.post(
+    "/",
+    response_model=Customer,
+    status_code=201,
+    summary="Create customer",
+    responses={409: {"description": "A customer with this name/phone already exists"}},
+)
 def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
   db_customer = CustomerModel(**customer.model_dump())
   db.add(db_customer)
@@ -167,7 +197,12 @@ def create_customer(customer: CustomerCreate, db: Session = Depends(get_db)):
   return db_customer
 
 
-@router.put("/{customer_id}", response_model=Customer)
+@router.put(
+    "/{customer_id}",
+    response_model=Customer,
+    summary="Update customer",
+    responses={404: {"description": "Customer not found"}},
+)
 def update_customer(customer_id: int, customer: CustomerUpdate, db: Session = Depends(get_db)):
   db_customer = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
   if not db_customer:
@@ -181,7 +216,15 @@ def update_customer(customer_id: int, customer: CustomerUpdate, db: Session = De
   return db_customer
 
 
-@router.delete("/{customer_id}")
+@router.delete(
+    "/{customer_id}",
+    summary="Delete customer",
+    description="Deletes a customer. **Walk-in Customer** (the system cash-sale record) cannot be deleted.",
+    responses={
+        400: {"description": "Walk-in Customer is a system record and cannot be deleted"},
+        404: {"description": "Customer not found"},
+    },
+)
 def delete_customer(customer_id: int, db: Session = Depends(get_db)):
   db_customer = db.query(CustomerModel).filter(CustomerModel.id == customer_id).first()
   if not db_customer:
