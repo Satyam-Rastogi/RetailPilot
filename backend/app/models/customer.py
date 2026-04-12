@@ -16,6 +16,11 @@ class CustomerModel(Base):
   customer_type = Column(String(20), nullable=False, default="Retail")
   credit_days = Column(Integer, nullable=True, default=0)
   credit_limit = Column(Float, nullable=True)
+  # Per-customer pricing rules: markup or discount applied when creating invoices
+  price_markup_type = Column(String(10), nullable=True)   # 'percent' | 'flat' | None
+  price_markup_value = Column(Float, nullable=True)
+  price_discount_type = Column(String(10), nullable=True)  # 'percent' | 'flat' | None
+  price_discount_value = Column(Float, nullable=True)
   notes = Column(Text, nullable=True)
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
   updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)

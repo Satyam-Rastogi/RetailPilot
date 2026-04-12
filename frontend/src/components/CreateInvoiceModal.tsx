@@ -1,12 +1,14 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { createPortal } from 'react-dom'
 import { useModalKeyboard } from '../hooks/useModalKeyboard'
+import { DatePicker } from './DatePicker'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { format } from 'date-fns'
 import { X, Search, ChevronDown, UserPlus, AlertTriangle } from 'lucide-react'
 import { invoiceService, customerService, itemService, ledgerService } from '../services/api'
 import type { CustomerListResponse, ItemListResponse, CustomerLedger } from '../types/api'
 import { cn } from '../lib/utils'
+import { useSettings } from './SettingsProvider'
 
 const inputCls = 'w-full px-3 py-2.5 brutal-border bg-paper text-ink font-mono text-sm focus:outline-none focus:border-accent transition-colors'
 const labelCls = 'block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5'
@@ -14,6 +16,8 @@ const labelCls = 'block text-[10px] font-mono uppercase tracking-widest text-ink
 interface CreateLineItem {
   item_id: number
   item_name: string
+  variant_id?: number
+  variant_value?: string
   quantity: number
   price: number
   discount_amount: number
@@ -21,6 +25,12 @@ interface CreateLineItem {
   unit_of_measurement?: string
   gst_rate?: number
   hsn_sac_code?: string
+}
+
+// Pending variant selection: item chosen but waiting for variant pick
+interface PendingVariantPick {
+  item: ItemListResponse
+  basePrice: number
 }
 
 // ── Customer fuzzy combobox ───────────────────────────────────────────────────
@@ -337,6 +347,7 @@ interface CreateInvoiceModalProps {
 
 export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustomerId }: CreateInvoiceModalProps) {
   const queryClient = useQueryClient()
+  const { formatCurrency } = useSettings()
 
   const [createForm, setCreateForm] = useState({
     customer_id: preselectedCustomerId ?? 0,
@@ -350,6 +361,8 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
   })
   const [createLineItems, setCreateLineItems] = useState<CreateLineItem[]>([])
   const [createError, setCreateError] = useState('')
+  // Variant picker: item selected but awaiting variant choice
+  const [pendingVariantPick, setPendingVariantPick] = useState<PendingVariantPick | null>(null)
 
   // Quick-add customer
   const [showQuickAdd, setShowQuickAdd] = useState(false)
@@ -420,6 +433,44 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
   const isWholesale = selectedCustomer?.customer_type === 'Wholesale'
   const hasCreditLimit = !!selectedCustomer?.credit_limit && selectedCustomer.credit_limit > 0
 
+  // ── Quick Adjust state ────────────────────────────────────────────────────
+  const [qadjType, setQadjType] = useState<'markup' | 'discount'>('markup')
+  const [qadjMode, setQadjMode] = useState<'percent' | 'flat'>('percent')
+  const [qadjValue, setQadjValue] = useState('')
+  const [showQadj, setShowQadj] = useState(false)
+
+  // ── Apply customer-level pricing rule to a base price ────────────────────
+  const applyCustomerPricing = (basePrice: number, customer: typeof selectedCustomer): number => {
+    if (!customer) return basePrice
+    let price = basePrice
+    // Apply markup first
+    if (customer.price_markup_type === 'percent' && customer.price_markup_value) {
+      price = price * (1 + customer.price_markup_value / 100)
+    } else if (customer.price_markup_type === 'flat' && customer.price_markup_value) {
+      price = price + customer.price_markup_value
+    }
+    // Then apply discount on top of the marked-up price
+    if (customer.price_discount_type === 'percent' && customer.price_discount_value) {
+      price = price * (1 - customer.price_discount_value / 100)
+    } else if (customer.price_discount_type === 'flat' && customer.price_discount_value) {
+      price = price - customer.price_discount_value
+    }
+    return Math.max(0, Math.round(price * 100) / 100)
+  }
+
+  // ── Describe the active customer pricing rule (for the badge) ─────────────
+  const customerPricingLabel = (() => {
+    if (!selectedCustomer) return null
+    const parts: string[] = []
+    if (selectedCustomer.price_markup_type && selectedCustomer.price_markup_value) {
+      parts.push(`+${selectedCustomer.price_markup_value}${selectedCustomer.price_markup_type === 'percent' ? '%' : '₹'} markup`)
+    }
+    if (selectedCustomer.price_discount_type && selectedCustomer.price_discount_value) {
+      parts.push(`−${selectedCustomer.price_discount_value}${selectedCustomer.price_discount_type === 'percent' ? '%' : '₹'} discount`)
+    }
+    return parts.length > 0 ? parts.join(', ') : null
+  })()
+
   const { data: customerLedger } = useQuery<CustomerLedger>({
     queryKey: ['customerLedger', createForm.customer_id],
     queryFn: () => ledgerService.getCustomerLedger(createForm.customer_id),
@@ -435,17 +486,26 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
       setCreateLineItems(prev => prev.map(li => {
         const itemData = items.find(i => i.id === li.item_id)
         if (!itemData) return li
-        return { ...li, price: newIsWholesale ? itemData.selling_price_wholesale : itemData.selling_price_retail }
+        const base = newIsWholesale ? itemData.selling_price_wholesale : itemData.selling_price_retail
+        return { ...li, price: applyCustomerPricing(base, newCustomer) }
       }))
     }
   }
 
   const handleAddItem = (item: ItemListResponse) => {
-    const price = isWholesale ? item.selling_price_wholesale : item.selling_price_retail
-    const existing = createLineItems.find(li => li.item_id === item.id)
+    const base = isWholesale ? item.selling_price_wholesale : item.selling_price_retail
+    const price = applyCustomerPricing(base, selectedCustomer)
+
+    // Variant items: open picker instead of adding directly
+    if (item.has_variants && item.variants && item.variants.length > 0) {
+      setPendingVariantPick({ item, basePrice: price })
+      return
+    }
+
+    const existing = createLineItems.find(li => li.item_id === item.id && !li.variant_id)
     if (existing) {
       setCreateLineItems(prev => prev.map(li =>
-        li.item_id === item.id ? { ...li, quantity: li.quantity + 1 } : li
+        li.item_id === item.id && !li.variant_id ? { ...li, quantity: li.quantity + 1 } : li
       ))
     } else {
       setCreateLineItems(prev => [...prev, {
@@ -460,6 +520,55 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
         hsn_sac_code: item.hsn_sac_code,
       }])
     }
+  }
+
+  const handleVariantConfirm = (variant: { id: number; variant_value: string; stock_quantity: number; price_override?: number | null }) => {
+    if (!pendingVariantPick) return
+    const { item, basePrice } = pendingVariantPick
+    // Use variant price_override if set, otherwise parent base price
+    const effectiveBase = variant.price_override != null ? variant.price_override : basePrice
+    const price = applyCustomerPricing(effectiveBase, selectedCustomer)
+
+    // Key by item_id + variant_id so same item in different sizes = separate rows
+    const existing = createLineItems.find(li => li.item_id === item.id && li.variant_id === variant.id)
+    if (existing) {
+      setCreateLineItems(prev => prev.map(li =>
+        li.item_id === item.id && li.variant_id === variant.id
+          ? { ...li, quantity: li.quantity + 1 }
+          : li
+      ))
+    } else {
+      setCreateLineItems(prev => [...prev, {
+        item_id: item.id,
+        item_name: `${item.item_name} — ${variant.variant_value}`,
+        variant_id: variant.id,
+        variant_value: variant.variant_value,
+        quantity: 1,
+        price,
+        discount_amount: 0,
+        discount_type: 'amount',
+        unit_of_measurement: item.unit_of_measurement,
+        gst_rate: item.gst_rate,
+        hsn_sac_code: item.hsn_sac_code,
+      }])
+    }
+    setPendingVariantPick(null)
+  }
+
+  const handleQuickAdjust = () => {
+    const val = parseFloat(qadjValue)
+    if (!val || val <= 0) return
+    setCreateLineItems(prev => prev.map(li => {
+      let newPrice = li.price
+      if (qadjType === 'markup') {
+        newPrice = qadjMode === 'percent' ? li.price * (1 + val / 100) : li.price + val
+      } else {
+        newPrice = qadjMode === 'percent' ? li.price * (1 - val / 100) : li.price - val
+      }
+      return { ...li, price: Math.max(0, Math.round(newPrice * 100) / 100) }
+    }))
+    setQadjValue('')
+    setShowQadj(false)
   }
 
   const computeTotals = () => {
@@ -509,6 +618,8 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
       notes: createForm.notes || undefined,
       line_items: createLineItems.map(li => ({
         item_id: li.item_id,
+        variant_id: li.variant_id ?? undefined,
+        variant_value: li.variant_value ?? undefined,
         quantity: li.quantity,
         price: li.price,
         discount_amount: li.discount_amount,
@@ -624,9 +735,11 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
             </div>
             <div>
               <label className={labelCls}>Invoice Date *</label>
-              <input type="date" value={createForm.invoice_date}
-                onChange={(e) => setCreateForm(f => ({ ...f, invoice_date: e.target.value }))}
-                className={inputCls} />
+              <DatePicker
+                value={createForm.invoice_date}
+                onChange={v => setCreateForm(f => ({ ...f, invoice_date: v }))}
+                className="w-full"
+              />
               {selectedCustomer?.credit_days && selectedCustomer.credit_days > 0 && createForm.invoice_date && (
                 <div className="mt-1.5 text-[10px] font-mono text-ink-light uppercase tracking-widest">
                   Due: {format(new Date(new Date(createForm.invoice_date).getTime() + selectedCustomer.credit_days * 86400000), 'dd MMM yyyy')}
@@ -655,7 +768,78 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
 
           {/* Line Items */}
           <div className="brutal-border bg-paper p-4">
-            <div className="font-display font-bold uppercase text-sm border-b border-line pb-2 mb-4">Line Items</div>
+            <div className="flex items-center justify-between border-b border-line pb-2 mb-4 gap-2 flex-wrap">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-display font-bold uppercase text-sm">Line Items</span>
+                {customerPricingLabel && (
+                  <span className="px-2 py-0.5 font-mono text-[9px] uppercase tracking-widest bg-warning/10 border border-warning/40 text-warning">
+                    {customerPricingLabel}
+                  </span>
+                )}
+              </div>
+              {createLineItems.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowQadj(v => !v)}
+                  className="font-mono text-[10px] uppercase tracking-widest px-2 py-1 brutal-border hover:bg-ink hover:text-surface transition-colors"
+                >
+                  Quick Adjust
+                </button>
+              )}
+            </div>
+
+            {/* Quick Adjust panel */}
+            {showQadj && createLineItems.length > 0 && (
+              <div className="mb-4 p-3 border border-dashed border-line bg-surface flex flex-wrap items-end gap-2">
+                <div>
+                  <div className={labelCls}>Type</div>
+                  <select
+                    value={qadjType}
+                    onChange={e => setQadjType(e.target.value as 'markup' | 'discount')}
+                    className="px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent"
+                  >
+                    <option value="markup">Markup (add)</option>
+                    <option value="discount">Discount (subtract)</option>
+                  </select>
+                </div>
+                <div>
+                  <div className={labelCls}>Mode</div>
+                  <select
+                    value={qadjMode}
+                    onChange={e => setQadjMode(e.target.value as 'percent' | 'flat')}
+                    className="px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent"
+                  >
+                    <option value="percent">% Percent</option>
+                    <option value="flat">₹ Flat amount</option>
+                  </select>
+                </div>
+                <div>
+                  <div className={labelCls}>Value</div>
+                  <input
+                    type="number" min="0" step="0.01"
+                    placeholder={qadjMode === 'percent' ? 'e.g. 10' : 'e.g. 50'}
+                    value={qadjValue}
+                    onChange={e => setQadjValue(e.target.value)}
+                    className="w-24 px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleQuickAdjust}
+                  disabled={!qadjValue || parseFloat(qadjValue) <= 0}
+                  className="px-3 py-1.5 bg-ink text-surface font-mono text-xs uppercase tracking-widest brutal-border disabled:opacity-40 hover:bg-accent hover:text-on-accent transition-colors"
+                >
+                  Apply to all
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowQadj(false)}
+                  className="px-3 py-1.5 font-mono text-xs uppercase tracking-widest brutal-border hover:border-danger hover:text-danger transition-colors"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             <div className="mb-4">
               <ItemCombobox
                 items={items ?? []}
@@ -696,12 +880,7 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
                           className="w-16 px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-sm text-center focus:outline-none focus:border-accent" />
                       </div>
                       <div>
-                        <div className={cn(labelCls, 'flex items-center gap-1')}>
-                          Price
-                          <span className={cn('px-1 text-[9px] border', isWholesale ? 'border-accent text-accent' : 'border-line text-ink-light')}>
-                            {isWholesale ? 'WS' : 'R'}
-                          </span>
-                        </div>
+                        <div className={labelCls}>Price</div>
                         <input type="number" step="0.01" value={li.price}
                           onChange={(e) => {
                             const updated = [...createLineItems]
@@ -818,6 +997,68 @@ export function CreateInvoiceModal({ open, onClose, onSuccess, preselectedCustom
   return (
     <>
       {invoiceModal}
+
+      {/* Variant picker portal */}
+      {pendingVariantPick && createPortal(
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-ink/50 backdrop-blur-sm"
+          onClick={e => { if (e.target === e.currentTarget) setPendingVariantPick(null) }}
+        >
+          <div className="brutal-border bg-surface w-full max-w-sm overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-line bg-ink text-surface">
+              <div>
+                <h3 className="font-display font-bold text-sm uppercase tracking-tighter">
+                  Select {pendingVariantPick.item.variant_type ?? 'Variant'}
+                </h3>
+                <p className="font-mono text-[10px] text-surface/60 mt-0.5">{pendingVariantPick.item.item_name}</p>
+              </div>
+              <button onClick={() => setPendingVariantPick(null)} className="p-1.5 hover:bg-danger transition-colors brutal-focus">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2 max-h-80 overflow-y-auto">
+              {(pendingVariantPick.item.variants ?? []).map(v => {
+                const effectivePrice = v.price_override != null
+                  ? applyCustomerPricing(v.price_override, selectedCustomer)
+                  : pendingVariantPick.basePrice
+                const inCart = createLineItems.find(li => li.variant_id === v.id)?.quantity ?? 0
+                return (
+                  <button
+                    key={v.id}
+                    disabled={v.stock_quantity <= 0}
+                    onClick={() => handleVariantConfirm(v)}
+                    className={cn(
+                      'w-full px-4 py-3 brutal-border flex items-center justify-between transition-colors',
+                      v.stock_quantity <= 0
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-accent hover:text-on-accent hover:border-accent',
+                    )}
+                  >
+                    <div className="text-left">
+                      <span className="font-mono font-bold text-sm">{v.variant_value}</span>
+                      {v.sku && <span className="font-mono text-[10px] text-ink-light ml-2">{v.sku}</span>}
+                      {inCart > 0 && (
+                        <span className="ml-2 text-[10px] font-mono bg-accent text-on-accent px-1.5 py-0.5">{inCart} in cart</span>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-display font-bold text-sm">{formatCurrency(effectivePrice)}</div>
+                      <div className={cn('font-mono text-[10px]', v.stock_quantity <= 5 ? 'text-warning' : 'text-ink-light')}>
+                        {v.stock_quantity <= 0 ? 'Out of stock' : `${v.stock_quantity} left`}
+                      </div>
+                    </div>
+                  </button>
+                )
+              })}
+              {(pendingVariantPick.item.variants ?? []).length === 0 && (
+                <p className="font-mono text-xs text-ink-light text-center py-4">No variants configured</p>
+              )}
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
       {showQuickAdd && createPortal(
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-ink/40 backdrop-blur-sm" onClick={e => { if (e.target === e.currentTarget) setShowQuickAdd(false) }}>
           <div ref={quickAddRef} className="brutal-border bg-surface w-full max-w-sm flex flex-col overflow-hidden">

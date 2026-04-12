@@ -828,3 +828,155 @@ def get_best_sellers(
     "price_brackets": price_brackets,
     "by_segment": by_segment,
   }
+
+
+# ── P&L Statement ─────────────────────────────────────────────────────────────
+
+class PnLMonthRow(BaseModel):
+  month: str              # 'YYYY-MM'
+  month_label: str        # 'Apr 2026'
+  revenue: float
+  cogs: float
+  gross_profit: float
+  gross_margin_pct: float
+  invoice_count: int
+
+class PnLSummarySchema(BaseModel):
+  revenue: float
+  cogs: float
+  gross_profit: float
+  gross_margin_pct: float
+  items_without_cost: int  # line items excluded from COGS (purchase_price is NULL)
+
+class PnLResponse(BaseModel):
+  from_date: str
+  to_date: str
+  months: List[PnLMonthRow]
+  summary: PnLSummarySchema
+
+
+@router.get(
+    "/pnl/",
+    response_model=PnLResponse,
+    summary="P&L statement — revenue vs estimated COGS by month",
+    description=(
+        "Computes gross profit per month for the given date range.\n\n"
+        "**Revenue** = sum of `grand_total` across all invoices.\n"
+        "**COGS** = sum of `quantity × purchase_price` for line items where the item has a `purchase_price`.\n"
+        "Items without a `purchase_price` are excluded from COGS and counted in `items_without_cost`.\n\n"
+        "Defaults: `from_date` = start of current Indian financial year (Apr 1); `to_date` = today."
+    ),
+    responses={400: {"description": "Invalid from_date or to_date — use YYYY-MM-DD"}},
+)
+def get_pnl(
+  from_date: Optional[str] = Query(None, description="Start date YYYY-MM-DD"),
+  to_date:   Optional[str] = Query(None, description="End date YYYY-MM-DD"),
+  db: Session = Depends(get_db),
+):
+  today = datetime.utcnow().date()
+
+  if from_date:
+    try:
+      start = datetime.strptime(from_date, "%Y-%m-%d")
+    except ValueError:
+      raise HTTPException(status_code=400, detail="Invalid from_date. Use YYYY-MM-DD")
+  else:
+    # Default: start of current Indian FY (April 1)
+    fy_start_year = today.year if today.month >= 4 else today.year - 1
+    start = datetime(fy_start_year, 4, 1)
+
+  if to_date:
+    try:
+      end = datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59)
+    except ValueError:
+      raise HTTPException(status_code=400, detail="Invalid to_date. Use YYYY-MM-DD")
+  else:
+    end = datetime.combine(today, datetime.max.time())
+
+  # Revenue by month
+  rev_rows = (
+    db.query(
+      func.strftime('%Y-%m', InvoiceModel.invoice_date).label('month'),
+      func.count(InvoiceModel.id).label('invoice_count'),
+      func.coalesce(func.sum(InvoiceModel.grand_total), 0).label('revenue'),
+    )
+    .filter(
+      InvoiceModel.invoice_date >= start,
+      InvoiceModel.invoice_date <= end,
+    )
+    .group_by(func.strftime('%Y-%m', InvoiceModel.invoice_date))
+    .order_by(func.strftime('%Y-%m', InvoiceModel.invoice_date))
+    .all()
+  )
+
+  # COGS by month — only line items where the item has a purchase_price
+  cogs_rows = (
+    db.query(
+      func.strftime('%Y-%m', InvoiceModel.invoice_date).label('month'),
+      func.coalesce(
+        func.sum(InvoiceLineItemModel.quantity * ItemModel.purchase_price), 0
+      ).label('cogs'),
+    )
+    .join(InvoiceLineItemModel, InvoiceLineItemModel.invoice_id == InvoiceModel.id)
+    .join(ItemModel, ItemModel.id == InvoiceLineItemModel.item_id)
+    .filter(
+      InvoiceModel.invoice_date >= start,
+      InvoiceModel.invoice_date <= end,
+      ItemModel.purchase_price.isnot(None),
+    )
+    .group_by(func.strftime('%Y-%m', InvoiceModel.invoice_date))
+    .all()
+  )
+
+  # Line items excluded from COGS due to missing purchase_price
+  items_without_cost = (
+    db.query(func.count(InvoiceLineItemModel.id))
+    .join(InvoiceModel, InvoiceModel.id == InvoiceLineItemModel.invoice_id)
+    .join(ItemModel, ItemModel.id == InvoiceLineItemModel.item_id)
+    .filter(
+      InvoiceModel.invoice_date >= start,
+      InvoiceModel.invoice_date <= end,
+      ItemModel.purchase_price.is_(None),
+    )
+    .scalar() or 0
+  )
+
+  cogs_by_month = {r.month: round(float(r.cogs), 2) for r in cogs_rows}
+
+  MONTH_ABBR = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+  months_out = []
+  for r in rev_rows:
+    revenue = round(float(r.revenue), 2)
+    cogs    = cogs_by_month.get(r.month, 0.0)
+    profit  = round(revenue - cogs, 2)
+    margin  = round((profit / revenue * 100), 1) if revenue > 0 else 0.0
+    yr, mo  = r.month.split('-')
+    months_out.append(PnLMonthRow(
+      month=r.month,
+      month_label=f"{MONTH_ABBR[int(mo)]} {yr}",
+      revenue=revenue,
+      cogs=cogs,
+      gross_profit=profit,
+      gross_margin_pct=margin,
+      invoice_count=int(r.invoice_count),
+    ))
+
+  total_revenue = round(sum(m.revenue for m in months_out), 2)
+  total_cogs    = round(sum(m.cogs    for m in months_out), 2)
+  total_profit  = round(total_revenue - total_cogs, 2)
+  total_margin  = round((total_profit / total_revenue * 100), 1) if total_revenue > 0 else 0.0
+
+  return PnLResponse(
+    from_date=start.strftime("%Y-%m-%d"),
+    to_date=end.strftime("%Y-%m-%d"),
+    months=months_out,
+    summary=PnLSummarySchema(
+      revenue=total_revenue,
+      cogs=total_cogs,
+      gross_profit=total_profit,
+      gross_margin_pct=total_margin,
+      items_without_cost=int(items_without_cost),
+    ),
+  )

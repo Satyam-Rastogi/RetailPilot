@@ -17,6 +17,8 @@ class InvoiceLineItemModel(Base):
   id = Column(Integer, primary_key=True, index=True)
   invoice_id = Column(Integer, ForeignKey("invoices.id"), nullable=False)
   item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
+  variant_id = Column(Integer, ForeignKey("item_variants.id"), nullable=True)   # null for non-variant items
+  variant_value = Column(String(100), nullable=True)   # snapshot of variant label at sale time
   quantity = Column(Integer, nullable=False)
   price = Column(Float, nullable=False)
   discount_amount = Column(Float, nullable=True)

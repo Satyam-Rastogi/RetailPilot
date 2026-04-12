@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query'
 import { reportService } from '../services/api'
 import type { DailySummaryResponse } from '../types/api'
 import { format, subDays } from 'date-fns'
+import { ReceiptPrinterSVG } from '../components/illustrations/HeaderIllustrations'
+import { DatePicker } from '../components/DatePicker'
 
 const METHOD_LABELS: Record<string, string> = {
   cash: 'Cash',
@@ -43,25 +45,29 @@ export default function DailySummaryPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="font-display font-bold text-2xl uppercase tracking-tighter">Daily Summary</h1>
-          <p className="text-xs font-mono text-ink-light uppercase tracking-widest mt-0.5">
-            Sales and collections by payment method
-          </p>
+      <div className="border-b border-line pb-5 relative overflow-hidden">
+        {/* Illustration — sits behind content */}
+        <div className="absolute right-0 top-0 bottom-0 flex items-center pointer-events-none select-none">
+          <ReceiptPrinterSVG className="w-72 h-36 text-ink opacity-35 dark:opacity-50" />
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          {quickDates.map(q => (
-            <button key={q.value} onClick={() => setDate(q.value)}
-              className={`px-3 py-1.5 brutal-border font-mono text-[10px] uppercase tracking-widest transition-colors brutal-focus ${
-                date === q.value ? 'bg-ink text-surface' : 'hover:bg-ink hover:text-surface'
-              }`}>
-              {q.label}
-            </button>
-          ))}
-          <input type="date" value={date} max={today}
-            onChange={e => setDate(e.target.value)}
-            className="px-3 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent transition-colors" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="font-display font-bold text-2xl uppercase tracking-tighter">Daily Summary</h1>
+            <p className="text-xs font-mono text-ink-light uppercase tracking-widest mt-0.5">
+              Sales and collections by payment method
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {quickDates.map(q => (
+              <button key={q.value} onClick={() => setDate(q.value)}
+                className={`px-3 py-1.5 brutal-border font-mono text-[10px] uppercase tracking-widest transition-colors brutal-focus ${
+                  date === q.value ? 'bg-ink text-surface' : 'hover:bg-ink hover:text-surface'
+                }`}>
+                {q.label}
+              </button>
+            ))}
+            <DatePicker value={date} onChange={setDate} max={today} />
+          </div>
         </div>
       </div>
 

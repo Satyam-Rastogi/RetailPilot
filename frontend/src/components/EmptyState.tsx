@@ -2,14 +2,17 @@ import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 
 interface EmptyStateProps {
-  icon: LucideIcon
+  /** Lucide icon — used when no illustration is provided */
+  icon?: LucideIcon
+  /** SVG illustration node — takes precedence over icon when provided */
+  illustration?: React.ReactNode
   title: string
   description?: string
   ctaLabel?: string
   onCta?: () => void
 }
 
-export function EmptyState({ icon: Icon, title, description, ctaLabel, onCta }: EmptyStateProps) {
+export function EmptyState({ icon: Icon, illustration, title, description, ctaLabel, onCta }: EmptyStateProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -17,11 +20,19 @@ export function EmptyState({ icon: Icon, title, description, ctaLabel, onCta }: 
       transition={{ duration: 0.4, ease: 'easeOut' }}
       className="flex flex-col items-center justify-center py-20 px-8 text-center"
     >
-      <div className="relative mb-8">
-        <div className="w-24 h-24 border-2 border-line flex items-center justify-center bg-surface relative">
-          <Icon className="w-10 h-10 text-ink-muted" strokeWidth={1.5} />
-          <div className="absolute inset-0 border-2 border-line translate-x-2 translate-y-2 -z-10 bg-paper" />
-        </div>
+      <div className="mb-8">
+        {illustration ? (
+          <div className="w-48 h-28 text-ink opacity-55 dark:opacity-65">
+            {illustration}
+          </div>
+        ) : Icon ? (
+          <div className="relative">
+            <div className="w-24 h-24 border-2 border-line flex items-center justify-center bg-surface relative">
+              <Icon className="w-10 h-10 text-ink-muted" strokeWidth={1.5} />
+              <div className="absolute inset-0 border-2 border-line translate-x-2 translate-y-2 -z-10 bg-paper" />
+            </div>
+          </div>
+        ) : null}
       </div>
       <h3 className="font-display font-bold text-2xl uppercase tracking-tighter text-ink mb-3">{title}</h3>
       {description && (

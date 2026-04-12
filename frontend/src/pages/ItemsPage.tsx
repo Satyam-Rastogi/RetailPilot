@@ -16,6 +16,9 @@ import {
 } from 'lucide-react'
 import { MagneticButton } from '../components/MagneticButton'
 import { useModalKeyboard } from '../hooks/useModalKeyboard'
+import { EmptyState } from '../components/EmptyState'
+import { SkeletonListPage } from '../components/Skeleton'
+import { BareShelfSVG } from '../components/illustrations/EmptyStateIllustrations'
 
 const PAGE_SIZE = 20
 
@@ -106,7 +109,9 @@ function ItemsPage() {
   const [variantInput, setVariantInput] = useState('')
   const [variantSkuInput, setVariantSkuInput] = useState('')
   const [variantStockInput, setVariantStockInput] = useState('')
-  const [pendingVariants, setPendingVariants] = useState<{ value: string; sku: string; stock: number }[]>([])
+  const [variantPriceInput, setVariantPriceInput] = useState('')
+  const [variantThresholdInput, setVariantThresholdInput] = useState('')
+  const [pendingVariants, setPendingVariants] = useState<{ value: string; sku: string; stock: number; price_override?: number; low_stock_threshold?: number }[]>([])
 
   const queryClient = useQueryClient()
 
@@ -187,6 +192,8 @@ function ItemsPage() {
               variant_value: v.value,
               sku: v.sku || undefined,
               stock_quantity: v.stock,
+              price_override: v.price_override,
+              low_stock_threshold: v.low_stock_threshold,
             })
           )
         )
@@ -213,6 +220,8 @@ function ItemsPage() {
               variant_value: v.value,
               sku: v.sku || undefined,
               stock_quantity: v.stock,
+              price_override: v.price_override,
+              low_stock_threshold: v.low_stock_threshold,
             })
           )
         )
@@ -364,14 +373,20 @@ function ItemsPage() {
   const addPendingVariant = () => {
     const val = variantInput.trim()
     if (!val) return
+    const price = parseFloat(variantPriceInput)
+    const threshold = parseInt(variantThresholdInput)
     setPendingVariants(prev => [...prev, {
       value: val,
       sku: variantSkuInput.trim(),
       stock: parseInt(variantStockInput) || 0,
+      price_override: !isNaN(price) && price > 0 ? price : undefined,
+      low_stock_threshold: !isNaN(threshold) && threshold > 0 ? threshold : undefined,
     }])
     setVariantInput('')
     setVariantSkuInput('')
     setVariantStockInput('')
+    setVariantPriceInput('')
+    setVariantThresholdInput('')
   }
 
   const pageItems = items?.data ?? []
@@ -447,7 +462,7 @@ function ItemsPage() {
               type="text"
               placeholder="Search by name, brand, or SKU..."
               value={search}
-              onChange={e => { setSearch(e.target.value); setPage(1) }}
+              onChange={e => setSearch(e.target.value)}
               className="w-full brutal-border bg-surface pl-12 pr-4 py-3 font-mono text-sm focus:outline-none focus:border-accent transition-colors"
             />
           </div>
@@ -608,10 +623,7 @@ function ItemsPage() {
 
       {/* Table */}
       {isLoading ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <Package className="w-10 h-10 text-ink-light mx-auto mb-4" />
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light">Loading inventory...</p>
-        </div>
+        <SkeletonListPage rows={6} />
       ) : filteredItems.length > 0 ? (
         <div className="brutal-border bg-surface overflow-hidden">
           <div className="overflow-x-auto">
@@ -834,7 +846,7 @@ function ItemsPage() {
                                         <td className="px-4 py-3">
                                           <span className={cn(
                                             'font-mono font-bold text-sm',
-                                            v.stock_quantity <= (item.low_stock_threshold ?? 0)
+                                            v.stock_quantity <= (v.low_stock_threshold ?? item.low_stock_threshold ?? 0)
                                               ? 'text-danger group-hover/sub:text-surface'
                                               : '',
                                           )}>
@@ -844,7 +856,10 @@ function ItemsPage() {
                                             {item.unit_of_measurement}
                                           </span>
                                         </td>
-                                        <td className="px-4 py-3" colSpan={2} />
+                                        <td className="px-4 py-3 font-mono text-xs text-ink-light group-hover/sub:text-surface/60">
+                                          {v.price_override != null ? `₹${v.price_override}` : <span className="opacity-40">parent price</span>}
+                                        </td>
+                                        <td className="px-4 py-3" />
                                         <td className="px-4 py-3">
                                           <div className="flex items-center justify-end gap-1.5">
                                             <button
@@ -905,21 +920,13 @@ function ItemsPage() {
           )}
         </div>
       ) : (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <Package className="w-10 h-10 text-ink-light mx-auto mb-4" />
-          <h3 className="font-mono text-sm uppercase tracking-widest text-ink mb-2">No Items Found</h3>
-          <p className="font-mono text-xs text-ink-light mb-6">
-            {(search || hasActiveFilters) ? 'No items match your search or filters.' : 'Add your first item to get started.'}
-          </p>
-          {!search && !hasActiveFilters && (
-            <button
-              onClick={() => { resetForm(); setShowModal(true) }}
-              className="flex items-center gap-2 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover brutal-focus transition-all mx-auto"
-            >
-              <Plus className="w-4 h-4" /> Add First Item
-            </button>
-          )}
-        </div>
+        <EmptyState
+          illustration={<BareShelfSVG />}
+          title="No Items Found"
+          description={(search || hasActiveFilters) ? 'No items match your search or filters' : 'Add your first item to get started'}
+          ctaLabel={(!search && !hasActiveFilters) ? 'Add First Item' : undefined}
+          onCta={(!search && !hasActiveFilters) ? () => { resetForm(); setShowModal(true) } : undefined}
+        />
       )}
 
       {/* ── Stock Adjustment Modal ───────────────────────────────────────────── */}
@@ -1160,7 +1167,7 @@ function ItemsPage() {
                         <p className="font-mono text-[10px] uppercase tracking-widest text-ink-light mb-2">
                           Add {formData.variant_type} Options
                         </p>
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                           <input
                             type="text"
                             value={variantInput}
@@ -1177,36 +1184,52 @@ function ItemsPage() {
                             placeholder="Child SKU (opt.)"
                             className={inputCls}
                           />
-                          <div className="flex gap-2">
-                            <input
-                              type="number"
-                              value={variantStockInput}
-                              onChange={e => setVariantStockInput(e.target.value)}
-                              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPendingVariant() } }}
-                              placeholder="Stock"
-                              className={cn(inputCls, 'flex-1')}
-                            />
-                            <button
-                              type="button"
-                              onClick={addPendingVariant}
-                              className="px-3 bg-accent text-on-accent brutal-border brutal-focus hover:opacity-90 transition-opacity"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
-                          </div>
+                          <input
+                            type="number" min="0"
+                            value={variantStockInput}
+                            onChange={e => setVariantStockInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPendingVariant() } }}
+                            placeholder="Stock"
+                            className={inputCls}
+                          />
+                          <input
+                            type="number" min="0" step="0.01"
+                            value={variantPriceInput}
+                            onChange={e => setVariantPriceInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPendingVariant() } }}
+                            placeholder="Price override (opt.)"
+                            className={inputCls}
+                          />
+                          <input
+                            type="number" min="0"
+                            value={variantThresholdInput}
+                            onChange={e => setVariantThresholdInput(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addPendingVariant() } }}
+                            placeholder="Low stock threshold (opt.)"
+                            className={inputCls}
+                          />
+                          <button
+                            type="button"
+                            onClick={addPendingVariant}
+                            className="px-3 py-2 bg-accent text-on-accent brutal-border brutal-focus hover:opacity-90 transition-opacity flex items-center justify-center gap-2 font-mono text-xs uppercase tracking-widest"
+                          >
+                            <Plus className="w-4 h-4" /> Add
+                          </button>
                         </div>
-                        <p className="font-mono text-[10px] text-ink-light mt-1">Press Enter or + to add</p>
+                        <p className="font-mono text-[10px] text-ink-light mt-1">Press Enter or Add button to add each variant</p>
                       </div>
 
                       {/* Variant configuration table */}
                       {(savedVariants.length > 0 || pendingVariants.length > 0) && (
-                        <div className="border border-line overflow-hidden">
-                          <table className="w-full">
+                        <div className="border border-line overflow-x-auto">
+                          <table className="w-full min-w-[560px]">
                             <thead>
                               <tr className="border-b border-line bg-ink/5">
                                 <th className="px-3 py-2 text-left text-[10px] font-mono uppercase tracking-widest text-ink-light">Value</th>
-                                <th className="px-3 py-2 text-left text-[10px] font-mono uppercase tracking-widest text-ink-light">Child SKU</th>
+                                <th className="px-3 py-2 text-left text-[10px] font-mono uppercase tracking-widest text-ink-light">SKU</th>
                                 <th className="px-3 py-2 text-center text-[10px] font-mono uppercase tracking-widest text-ink-light">Stock</th>
+                                <th className="px-3 py-2 text-center text-[10px] font-mono uppercase tracking-widest text-ink-light">Price Override</th>
+                                <th className="px-3 py-2 text-center text-[10px] font-mono uppercase tracking-widest text-ink-light">Low Stock</th>
                                 <th className="px-3 py-2 text-right text-[10px] font-mono uppercase tracking-widest text-ink-light">Action</th>
                               </tr>
                             </thead>
@@ -1217,6 +1240,12 @@ function ItemsPage() {
                                   <td className="px-3 py-2 font-mono font-bold text-sm">{v.variant_value}</td>
                                   <td className="px-3 py-2 font-mono text-xs text-ink-light">{v.sku || '—'}</td>
                                   <td className="px-3 py-2 font-mono text-sm text-center font-bold">{v.stock_quantity}</td>
+                                  <td className="px-3 py-2 font-mono text-xs text-center">
+                                    {v.price_override != null ? `₹${v.price_override}` : '—'}
+                                  </td>
+                                  <td className="px-3 py-2 font-mono text-xs text-center">
+                                    {v.low_stock_threshold != null ? v.low_stock_threshold : '—'}
+                                  </td>
                                   <td className="px-3 py-2 text-right">
                                     <button
                                       type="button"
@@ -1237,6 +1266,12 @@ function ItemsPage() {
                                   </td>
                                   <td className="px-3 py-2 font-mono text-xs text-ink-light">{v.sku || '—'}</td>
                                   <td className="px-3 py-2 font-mono text-sm text-center font-bold">{v.stock}</td>
+                                  <td className="px-3 py-2 font-mono text-xs text-center">
+                                    {v.price_override != null ? `₹${v.price_override}` : '—'}
+                                  </td>
+                                  <td className="px-3 py-2 font-mono text-xs text-center">
+                                    {v.low_stock_threshold != null ? v.low_stock_threshold : '—'}
+                                  </td>
                                   <td className="px-3 py-2 text-right">
                                     <button
                                       type="button"

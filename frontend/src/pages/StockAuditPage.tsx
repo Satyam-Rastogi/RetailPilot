@@ -276,9 +276,12 @@ function StockAuditPage() {
                           <div className="min-w-0">
                             <p className="font-display font-bold text-lg leading-tight truncate">
                               {entry.item_name || `Item #${entry.item_id}`}
+                              {entry.variant_value && (
+                                <span className="ml-2 font-mono text-sm font-normal text-accent">— {entry.variant_value}</span>
+                              )}
                             </p>
                             <p className="font-mono text-[10px] uppercase tracking-widest text-ink-light group-hover/card:text-surface/60 mt-0.5">
-                              ID {entry.item_id} · {format(new Date(entry.created_at), 'dd MMM yyyy, HH:mm')}
+                              ID {entry.item_id}{entry.variant_id ? ` · Variant #${entry.variant_id}` : ''} · {format(new Date(entry.created_at), 'dd MMM yyyy, HH:mm')}
                             </p>
                           </div>
                         </div>

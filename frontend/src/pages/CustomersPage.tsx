@@ -8,6 +8,9 @@ import { customerService } from '../services/api'
 import type { CustomerListResponse, Customer, PaginatedResponse } from '../types/api'
 import Pagination from '../components/Pagination'
 import { MagneticButton } from '../components/MagneticButton'
+import { EmptyState } from '../components/EmptyState'
+import { SkeletonListPage } from '../components/Skeleton'
+import { CustomerDirectorySVG } from '../components/illustrations/EmptyStateIllustrations'
 import { cn } from '../lib/utils'
 
 const PAGE_SIZE = 20
@@ -21,6 +24,10 @@ interface CustomerFormData {
   customer_type: string
   credit_days: number
   credit_limit: string
+  price_markup_type: string    // '' | 'percent' | 'flat'
+  price_markup_value: string
+  price_discount_type: string  // '' | 'percent' | 'flat'
+  price_discount_value: string
   notes: string
 }
 
@@ -33,6 +40,10 @@ const emptyForm: CustomerFormData = {
   customer_type: 'Retail',
   credit_days: 0,
   credit_limit: '',
+  price_markup_type: '',
+  price_markup_value: '',
+  price_discount_type: '',
+  price_discount_value: '',
   notes: '',
 }
 
@@ -108,6 +119,10 @@ function CustomersPage() {
       customer_type: detail.customer_type || 'Retail',
       credit_days: detail.credit_days || 0,
       credit_limit: detail.credit_limit != null ? String(detail.credit_limit) : '',
+      price_markup_type: detail.price_markup_type || '',
+      price_markup_value: detail.price_markup_value != null ? String(detail.price_markup_value) : '',
+      price_discount_type: detail.price_discount_type || '',
+      price_discount_value: detail.price_discount_value != null ? String(detail.price_discount_value) : '',
       notes: detail.notes || '',
     })
     setFormError('')
@@ -125,6 +140,12 @@ function CustomersPage() {
       ...formData,
       credit_days: Number(formData.credit_days) || 0,
       credit_limit: formData.credit_limit.trim() ? Number(formData.credit_limit) : null,
+      price_markup_type: formData.price_markup_type || null,
+      price_markup_value: formData.price_markup_type && formData.price_markup_value.trim()
+        ? Number(formData.price_markup_value) : null,
+      price_discount_type: formData.price_discount_type || null,
+      price_discount_value: formData.price_discount_type && formData.price_discount_value.trim()
+        ? Number(formData.price_discount_value) : null,
       phone_number: formData.phone_number || undefined,
       email: formData.email || undefined,
       address: formData.address || undefined,
@@ -294,6 +315,73 @@ function CustomersPage() {
             </div>
           </div>
 
+          {/* ── Pricing Rules ── */}
+          <div className="border-t border-line pt-4">
+            <div className="text-[10px] font-mono uppercase tracking-widest text-ink-light mb-3">
+              Invoice Pricing Rules <span className="normal-case tracking-normal">(auto-applied when creating invoices)</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Markup */}
+              <div className="brutal-border p-3 space-y-2">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-light">Markup</div>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.price_markup_type}
+                    onChange={e => setFormData({ ...formData, price_markup_type: e.target.value, price_markup_value: '' })}
+                    className="flex-1 px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent"
+                  >
+                    <option value="">None</option>
+                    <option value="percent">% Percent</option>
+                    <option value="flat">₹ Flat amount</option>
+                  </select>
+                  {formData.price_markup_type && (
+                    <input
+                      type="number" min="0" step="0.01"
+                      placeholder={formData.price_markup_type === 'percent' ? 'e.g. 15' : 'e.g. 50'}
+                      value={formData.price_markup_value}
+                      onChange={e => setFormData({ ...formData, price_markup_value: e.target.value })}
+                      className="w-24 px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent"
+                    />
+                  )}
+                </div>
+                {formData.price_markup_type && formData.price_markup_value && (
+                  <div className="text-[10px] font-mono text-warning">
+                    +{formData.price_markup_value}{formData.price_markup_type === 'percent' ? '%' : '₹'} added to all item prices
+                  </div>
+                )}
+              </div>
+              {/* Discount */}
+              <div className="brutal-border p-3 space-y-2">
+                <div className="text-[10px] font-mono uppercase tracking-widest text-ink-light">Discount</div>
+                <div className="flex gap-2">
+                  <select
+                    value={formData.price_discount_type}
+                    onChange={e => setFormData({ ...formData, price_discount_type: e.target.value, price_discount_value: '' })}
+                    className="flex-1 px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent"
+                  >
+                    <option value="">None</option>
+                    <option value="percent">% Percent</option>
+                    <option value="flat">₹ Flat amount</option>
+                  </select>
+                  {formData.price_discount_type && (
+                    <input
+                      type="number" min="0" step="0.01"
+                      placeholder={formData.price_discount_type === 'percent' ? 'e.g. 10' : 'e.g. 30'}
+                      value={formData.price_discount_value}
+                      onChange={e => setFormData({ ...formData, price_discount_value: e.target.value })}
+                      className="w-24 px-2 py-1.5 brutal-border bg-paper text-ink font-mono text-xs focus:outline-none focus:border-accent"
+                    />
+                  )}
+                </div>
+                {formData.price_discount_type && formData.price_discount_value && (
+                  <div className="text-[10px] font-mono text-success">
+                    −{formData.price_discount_value}{formData.price_discount_type === 'percent' ? '%' : '₹'} deducted from all item prices
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div>
             <label htmlFor="cust-address" className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">
               Address
@@ -388,9 +476,7 @@ function CustomersPage() {
 
       {/* Table / States */}
       {isLoading ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light">Loading...</p>
-        </div>
+        <SkeletonListPage rows={6} />
       ) : rows.length > 0 ? (
         <div className="brutal-border bg-surface overflow-hidden">
           <div className="overflow-x-auto">
@@ -454,20 +540,13 @@ function CustomersPage() {
           />
         </div>
       ) : (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light mb-1">No customers found</p>
-          <p className="font-mono text-xs text-ink-light opacity-60">
-            {search ? 'No customers match your search' : 'Create your first customer to get started'}
-          </p>
-          {!search && (
-            <button
-              onClick={() => { setFormData(emptyForm); setFormError(''); setEditingCustomer(null); setShowCreateModal(true) }}
-              className="mt-6 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
-            >
-              Add Customer
-            </button>
-          )}
-        </div>
+        <EmptyState
+          illustration={<CustomerDirectorySVG />}
+          title="No Customers Found"
+          description={search ? 'No customers match your search' : 'Create your first customer to get started'}
+          ctaLabel={!search ? 'Add Customer' : undefined}
+          onCta={!search ? () => { setFormData(emptyForm); setFormError(''); setEditingCustomer(null); setShowCreateModal(true) } : undefined}
+        />
       )}
 
       {/* Modals */}

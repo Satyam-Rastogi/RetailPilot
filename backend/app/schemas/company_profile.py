@@ -22,6 +22,7 @@ class CompanyProfileBase(BaseModel):
       raise ValueError("Invalid GSTIN format. Expected: 22AAAAA0000A1Z5")
     return cleaned
   default_tax_rate: float
+  default_credit_days: int = 60
   currency_symbol: str
   receiver_bank_name: Optional[str] = None
   receiver_account_number: Optional[str] = None

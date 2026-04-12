@@ -40,6 +40,8 @@ export interface CompanyProfile {
   shop_gstin?: string
   /** Default tax rate applied to new invoices (e.g. 18 for 18%). */
   default_tax_rate: number
+  /** Default credit period in days before an unpaid invoice is considered overdue (default: 60). */
+  default_credit_days: number
   /** Currency symbol shown in the UI (default: `₹`). */
   currency_symbol: string
   receiver_bank_name?: string
@@ -63,6 +65,14 @@ export interface CustomerBase {
   credit_days?: number
   /** Maximum outstanding balance allowed. */
   credit_limit?: number
+  /** `'percent'` or `'flat'` — type of markup applied to all invoices for this customer. */
+  price_markup_type?: string
+  /** Markup amount (e.g. 15 for 15% or 50 for ₹50). */
+  price_markup_value?: number
+  /** `'percent'` or `'flat'` — type of discount applied to all invoices for this customer. */
+  price_discount_type?: string
+  /** Discount amount (e.g. 10 for 10% or 30 for ₹30). */
+  price_discount_value?: number
   notes?: string
 }
 
@@ -81,6 +91,10 @@ export interface CustomerListResponse {
   customer_type: string
   credit_days?: number
   credit_limit?: number
+  price_markup_type?: string
+  price_markup_value?: number
+  price_discount_type?: string
+  price_discount_value?: number
 }
 
 /** Full supplier fields. */
@@ -122,6 +136,10 @@ export interface ItemVariant {
   variant_value: string
   sku?: string
   stock_quantity: number
+  /** When set, overrides the parent item's `selling_price_retail` for this variant. */
+  price_override?: number
+  /** Per-variant low stock alert threshold. Falls back to parent item threshold when null. */
+  low_stock_threshold?: number
   created_at: string
 }
 
@@ -192,6 +210,8 @@ export interface ItemListResponse {
 export interface InvoiceLineItem {
   item_id: number
   item_name?: string
+  variant_id?: number
+  variant_value?: string
   quantity: number
   price: number
   discount_amount?: number
@@ -297,6 +317,8 @@ export interface StockAuditEntry {
   id: number
   item_id: number
   item_name?: string
+  variant_id?: number
+  variant_value?: string
   /** Signed quantity change. Positive = stock in, negative = stock out. */
   delta: number
   /** Stock quantity after this movement was applied. */
@@ -430,6 +452,12 @@ export interface InvoiceLedger {
 export interface CustomerLedger {
   customer_id: number
   customer_name: string
+  customer_phone?: string
+  customer_address?: string
+  customer_gstin?: string
+  /** Customer-level credit period in days; overrides company default when set. */
+  credit_days?: number
+  opening_balance: number
   total_invoiced: number
   total_paid: number
   total_unpaid: number
@@ -545,6 +573,52 @@ export interface RevenueReportResponse {
   top_customers: TopCustomer[]
   summary: RevenueSummary
   period_months: number
+}
+
+/** Single GST rate slab row (also used as the totals row). */
+export interface GstSlab {
+  rate: number
+  invoice_count: number
+  taxable_value: number
+  cgst: number
+  sgst: number
+  total_tax: number
+  gross_billed: number
+}
+
+/** Response from `GET /reports/gst-summary/`. */
+export interface GstSummaryResponse {
+  from_date: string
+  to_date: string
+  slabs: GstSlab[]
+  totals: GstSlab
+}
+
+/** One month row in the P&L breakdown. */
+export interface PnLMonth {
+  month: string         // 'YYYY-MM'
+  month_label: string   // 'Apr 2026'
+  revenue: number
+  cogs: number
+  gross_profit: number
+  gross_margin_pct: number
+  invoice_count: number
+}
+
+export interface PnLSummary {
+  revenue: number
+  cogs: number
+  gross_profit: number
+  gross_margin_pct: number
+  items_without_cost: number  // line items excluded from COGS (no purchase_price)
+}
+
+/** Response from `GET /reports/pnl/`. */
+export interface PnLResponse {
+  from_date: string
+  to_date: string
+  months: PnLMonth[]
+  summary: PnLSummary
 }
 
 /**

@@ -306,7 +306,52 @@ html.light {
 /* ── Print styles ────────────────────────────────────────────── */
 @media print {
   @page { size: A4 portrait; margin: 1.5cm; }
-  body { background: white !important; }
+
+  /* Reset layout overflow/height so print content flows across multiple pages */
+  html, body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* The root layout wrapper has overflow-hidden — must be removed for print */
+  body > #root,
+  body > #root > *,
+  body > #root > * > * {
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  /* The <main> scroll container has h-screen overflow-y-auto — reset for print */
+  main {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  /* Hide decorative fixed backgrounds that bleed into print */
+  .bg-noise,
+  .fixed {
+    display: none !important;
+  }
+
+  /* Strip framer-motion transforms so print doesn't get partial animation frames */
+  * {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
+
+  /* Prevent table rows from splitting across page breaks */
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* Keep section headings with their content */
+  h1, h2, h3, thead {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
 }
 
 /* ── Keyframes ───────────────────────────────────────────────── */

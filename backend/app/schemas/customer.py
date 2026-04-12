@@ -25,6 +25,10 @@ class CustomerBase(BaseModel):
   customer_type: Optional[str] = "Retail"
   credit_days: Optional[int] = 0
   credit_limit: Optional[float] = None
+  price_markup_type: Optional[str] = None    # 'percent' | 'flat'
+  price_markup_value: Optional[float] = None
+  price_discount_type: Optional[str] = None  # 'percent' | 'flat'
+  price_discount_value: Optional[float] = None
   notes: Optional[str] = None
 
 
@@ -45,12 +49,18 @@ class Customer(CustomerBase):
 
 
 class CustomerListResponse(BaseModel):
+  model_config = ConfigDict(from_attributes=True)
+
   id: int
   name: str
   phone_number: Optional[str]
   customer_type: str
   credit_days: Optional[int] = None
   credit_limit: Optional[float] = None
+  price_markup_type: Optional[str] = None
+  price_markup_value: Optional[float] = None
+  price_discount_type: Optional[str] = None
+  price_discount_value: Optional[float] = None
 
 
 class CustomerOutstandingResponse(BaseModel):

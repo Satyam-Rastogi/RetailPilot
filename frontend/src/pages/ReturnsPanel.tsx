@@ -8,6 +8,7 @@ import { ReturnReasonCategory, type Invoice, type ReturnReceipt } from '../types
 import { useSettings } from '../components/SettingsProvider'
 import { cn } from '../lib/utils'
 import { useModalKeyboard } from '../hooks/useModalKeyboard'
+import { DatePicker } from '../components/DatePicker'
 
 interface ReturnsPanelProps {
   invoice: Invoice
@@ -256,12 +257,10 @@ function ReturnsPanel({ invoice }: ReturnsPanelProps) {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Return Date *</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={returnFormData.return_date}
-                  onChange={(e) => setReturnFormData({ ...returnFormData, return_date: e.target.value })}
-                  className={inputClass}
-                  required
+                  onChange={v => setReturnFormData({ ...returnFormData, return_date: v })}
+                  className="w-full"
                 />
               </div>
               <div>
@@ -583,11 +582,10 @@ function ReturnsPanel({ invoice }: ReturnsPanelProps) {
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Return Date</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={editFormData.return_date}
-                  onChange={(e) => setEditFormData({ ...editFormData, return_date: e.target.value })}
-                  className={inputClass}
+                  onChange={v => setEditFormData({ ...editFormData, return_date: v })}
+                  className="w-full"
                 />
               </div>
               <div>

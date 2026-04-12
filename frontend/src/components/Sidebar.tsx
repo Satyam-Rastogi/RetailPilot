@@ -6,7 +6,7 @@ import {
   LayoutDashboard, FileText, Users, BookOpen, Building2,
   Package, RotateCcw, Search, Settings, ChevronLeft, Sun, Moon, X,
   BarChart2, CalendarDays, TrendingUp, LineChart, ChevronDown,
-  Star, Boxes,
+  Star, Boxes, Receipt, PiggyBank, ScanBarcode,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useTheme } from './ThemeProvider'
@@ -14,14 +14,15 @@ import { useSettings } from './SettingsProvider'
 import api from '../services/api'
 
 const MAIN_NAV = [
-  { name: 'Dashboard',   path: '/',                         icon: LayoutDashboard },
-  { name: 'Invoices',    path: '/invoices',                  icon: FileText },
-  { name: 'Customers',   path: '/customers',                 icon: Users },
-  { name: 'Ledgers',     path: '/customers/wholesale-ledgers', icon: BookOpen },
-  { name: 'Suppliers',   path: '/suppliers',                 icon: Building2 },
-  { name: 'Inventory',   path: '/items',                     icon: Package },
-  { name: 'Returns',     path: '/returns',                   icon: RotateCcw },
-  { name: 'Stock Audit', path: '/stock-audit',               icon: Search },
+  { name: 'Dashboard',    path: '/',                          icon: LayoutDashboard },
+  { name: 'Price Browser',path: '/price-check',               icon: ScanBarcode },
+  { name: 'Invoices',     path: '/invoices',                  icon: FileText },
+  { name: 'Customers',    path: '/customers',                 icon: Users },
+  { name: 'Ledgers',      path: '/customers/wholesale-ledgers', icon: BookOpen },
+  { name: 'Suppliers',    path: '/suppliers',                 icon: Building2 },
+  { name: 'Inventory',    path: '/items',                     icon: Package },
+  { name: 'Returns',      path: '/returns',                   icon: RotateCcw },
+  { name: 'Stock Audit',  path: '/stock-audit',               icon: Search },
 ]
 
 const ANALYTICS_NAV = [
@@ -31,6 +32,8 @@ const ANALYTICS_NAV = [
   { name: 'Revenue',      path: '/reports/revenue',         icon: TrendingUp },
   { name: 'Aging',        path: '/reports/aging',           icon: BarChart2 },
   { name: 'Daily Summary',path: '/reports/daily',           icon: CalendarDays },
+  { name: 'GST Summary',  path: '/reports/gst',             icon: Receipt },
+  { name: 'P&L',          path: '/reports/pnl',             icon: PiggyBank },
 ]
 
 const BOTTOM_NAV = [
@@ -219,7 +222,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
   return (
     <>
       {/* Desktop Sidebar */}
-      <div className="hidden md:block relative h-screen sticky top-0 z-40 shrink-0">
+      <div className="hidden md:block print:hidden relative h-screen sticky top-0 z-40 shrink-0">
         <motion.aside
           initial={false}
           animate={{ width: isExpanded ? 280 : 72 }}
@@ -238,7 +241,7 @@ export function Sidebar({ isExpanded, setIsExpanded, isMobileOpen, setIsMobileOp
 
       {/* Mobile Drawer */}
       {isMobileOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
+        <div className="md:hidden print:hidden fixed inset-0 z-50 flex">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}

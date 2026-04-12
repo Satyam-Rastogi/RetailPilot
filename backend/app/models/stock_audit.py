@@ -10,6 +10,7 @@ class StockAuditModel(BaseModel):
   __tablename__ = "stock_audits"
 
   item_id = Column(Integer, ForeignKey("items.id"), nullable=False)
+  variant_id = Column(Integer, ForeignKey("item_variants.id"), nullable=True)
   delta = Column(Integer, nullable=False)
   delta_after = Column(Integer, nullable=False)
   reason = Column(String(255), nullable=True)

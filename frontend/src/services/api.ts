@@ -120,6 +120,8 @@ export const customerService = {
       const response = res.data;
       return response.data || response;
     }),
+  /** `GET /customers/walkin/` — returns or creates the shared Walk-in Customer record. */
+  getOrCreateWalkin: () => api.get('/customers/walkin/').then(res => res.data),
 }
 
 // ── Suppliers ─────────────────────────────────────────────────────────────────
@@ -190,9 +192,9 @@ export const itemService = {
 export const variantService = {
   list: (itemId: number) =>
     api.get(`/items/${itemId}/variants/`).then(res => res.data),
-  create: (itemId: number, data: { variant_value: string; sku?: string; stock_quantity?: number }) =>
+  create: (itemId: number, data: { variant_value: string; sku?: string; stock_quantity?: number; price_override?: number; low_stock_threshold?: number }) =>
     api.post(`/items/${itemId}/variants/`, data).then(res => res.data),
-  update: (itemId: number, variantId: number, data: { variant_value?: string; sku?: string; stock_quantity?: number }) =>
+  update: (itemId: number, variantId: number, data: { variant_value?: string; sku?: string; stock_quantity?: number; price_override?: number; low_stock_threshold?: number }) =>
     api.put(`/items/${itemId}/variants/${variantId}`, data).then(res => res.data),
   delete: (itemId: number, variantId: number) =>
     api.delete(`/items/${itemId}/variants/${variantId}`).then(res => res.data),
@@ -375,6 +377,9 @@ export const reportService = {
   /** `GET /reports/gst-summary/` — GST liability grouped by rate slab with CGST/SGST split. */
   getGstSummary: (params?: { from_date?: string; to_date?: string }) =>
     api.get('/reports/gst-summary/', { params }).then(res => res.data),
+  /** `GET /reports/pnl/` — P&L statement: revenue − estimated COGS by month. */
+  getPnl: (params?: { from_date?: string; to_date?: string }) =>
+    api.get('/reports/pnl/', { params }).then(res => res.data),
 }
 
 // ── Analytics ─────────────────────────────────────────────────────────────────

@@ -12,6 +12,8 @@ import { amountInWords, isInterStateTx, stateFromGSTIN } from '../lib/printUtils
 interface InvoiceLineItem {
   item_id: number
   item_name: string
+  variant_id?: number
+  variant_value?: string
   quantity: number
   price: number
   discount_amount: number
@@ -291,7 +293,6 @@ export default function InvoiceDetailPage() {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: '10px', color: '#999', textTransform: 'uppercase', letterSpacing: '1px', marginBottom: '4px' }}>Bill To</div>
           <div style={{ fontSize: '15px', fontWeight: 'bold', color: '#111' }}>{invoice.customer_name}</div>
-          <div style={{ fontSize: '12px', color: '#d97706', marginTop: '2px' }}>{invoice.customer_type}</div>
           {invoice.customer_address && <div style={{ fontSize: '12px', color: '#555', marginTop: '2px' }}>{invoice.customer_address}</div>}
           {invoice.customer_phone && <div style={{ fontSize: '12px', color: '#555', marginTop: '2px' }}>Ph: {invoice.customer_phone}</div>}
           {invoice.customer_gstin && <div style={{ fontSize: '12px', color: '#111', fontWeight: 'bold', marginTop: '2px' }}>GSTIN: {invoice.customer_gstin}</div>}
@@ -767,6 +768,9 @@ export default function InvoiceDetailPage() {
                           <span className={fullyReturned ? 'line-through' : ''}>
                             {item.item_name || 'Unknown Item'}
                           </span>
+                          {item.variant_value && (
+                            <span className="ml-1 text-[11px] font-normal text-accent">({item.variant_value})</span>
+                          )}
                           {fullyReturned && (
                             <span className="ml-2 text-[10px] font-normal text-warning uppercase tracking-widest">[returned]</span>
                           )}

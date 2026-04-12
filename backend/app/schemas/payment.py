@@ -72,6 +72,11 @@ class InvoiceLedgerResponse(BaseModel):
 class CustomerLedgerResponse(BaseModel):
   customer_id: int
   customer_name: str
+  customer_phone: Optional[str] = None
+  customer_address: Optional[str] = None
+  customer_gstin: Optional[str] = None
+  credit_days: Optional[int] = None   # customer-level credit period; overrides company default
+  opening_balance: float = 0.0   # balance carried forward before date_from (0 if no filter)
   total_invoiced: float
   total_paid: float
   total_unpaid: float

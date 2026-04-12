@@ -10,6 +10,8 @@ class StockAuditResponse(BaseModel):
     id: int
     item_id: int
     item_name: Optional[str] = None
+    variant_id: Optional[int] = None
+    variant_value: Optional[str] = None
     delta: int
     delta_after: int
     reason: Optional[str] = None

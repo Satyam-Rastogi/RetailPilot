@@ -168,6 +168,11 @@ def get_stock_audits(
       id=entry.id,
       item_id=entry.item_id,
       item_name=entry.item.item_name if entry.item else None,
+      variant_id=entry.variant_id,
+      variant_value=(
+        next((v.variant_value for v in entry.item.variants if v.id == entry.variant_id), None)
+        if entry.variant_id and entry.item else None
+      ),
       delta=entry.delta,
       delta_after=entry.delta_after,
       reason=entry.reason,
@@ -411,6 +416,7 @@ def adjust_variant_stock(
   variant.stock_quantity = new_qty
   audit = StockAuditModel(
     item_id=item_id,
+    variant_id=variant_id,
     delta=payload.delta,
     delta_after=new_qty,
     reason=payload.reason or f"Variant '{variant.variant_value}' adjustment",

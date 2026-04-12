@@ -170,6 +170,26 @@ def get_customers_outstanding(
 
 
 @router.get(
+    "/walkin/",
+    response_model=Customer,
+    summary="Get or create the shared Walk-in Customer record",
+    description="Returns the single shared Walk-in Customer record, creating it on first call. Used by the Price Browser flow.",
+)
+def get_or_create_walkin(db: Session = Depends(get_db)):
+  customer = db.query(CustomerModel).filter(CustomerModel.name == "Walk-in Customer").first()
+  if not customer:
+    customer = CustomerModel(
+      name="Walk-in Customer",
+      customer_type="Retail",
+      notes="Shared record for anonymous walk-in sales. Do not delete.",
+    )
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+  return customer
+
+
+@router.get(
     "/{customer_id}",
     response_model=Customer,
     summary="Get customer by ID",

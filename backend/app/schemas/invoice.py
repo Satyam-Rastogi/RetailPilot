@@ -6,6 +6,8 @@ from typing import List, Optional
 class InvoiceLineItemBase(BaseModel):
   item_id: int
   item_name: Optional[str] = None
+  variant_id: Optional[int] = None
+  variant_value: Optional[str] = None
   quantity: int
   price: float
   discount_amount: Optional[float] = None

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Integer, ForeignKey, DateTime
+from sqlalchemy import Column, String, Float, Integer, ForeignKey, DateTime
 from sqlalchemy.orm import relationship
 from app.db.session import Base
 from datetime import datetime
@@ -12,6 +12,8 @@ class ItemVariantModel(Base):
   variant_value = Column(String(100), nullable=False)   # e.g. "Small", "Red", "XL"
   sku = Column(String(100), nullable=True, index=True)  # child SKU, e.g. "KS-001-S"
   stock_quantity = Column(Integer, nullable=False, default=0)
+  price_override = Column(Float, nullable=True)         # overrides parent's selling_price_retail when set
+  low_stock_threshold = Column(Integer, nullable=True)  # per-variant alert threshold
   created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
   item = relationship("ItemModel", back_populates="variants")

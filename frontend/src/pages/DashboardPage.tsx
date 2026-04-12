@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { containerVariants, cardVariants, EASE_OUT } from '../lib/motionVariants'
 import {
   TrendingUp, TrendingDown, ArrowRight, X, AlertCircle,
   Users, Building2, Package, FileText, Plus,
@@ -444,7 +445,7 @@ function DashboardPage() {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 0.1 }}
+            transition={{ delay: 0.1, duration: 0.4, ease: EASE_OUT }}
             className="flex flex-col sm:flex-row gap-2 sm:gap-4 mt-4 text-ink-light font-mono uppercase tracking-widest text-sm"
           >
             <span>{currentTime.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' })}</span>
@@ -475,10 +476,7 @@ function DashboardPage() {
       <motion.div
         initial="hidden"
         animate="visible"
-        variants={{
-          hidden: { opacity: 0 },
-          visible: { opacity: 1, transition: { staggerChildren: 0.08 } },
-        }}
+        variants={containerVariants}
         className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
       >
         {kpis.map((kpi) => {
@@ -486,7 +484,7 @@ function DashboardPage() {
           return (
             <motion.div
               key={kpi.title}
-              variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0 } }}
+              variants={cardVariants}
               onClick={() => navigate(kpi.href)}
               className={cn(
                 'p-5 brutal-border bg-surface relative group overflow-hidden brutal-shadow-hover cursor-pointer',
@@ -545,7 +543,7 @@ function DashboardPage() {
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
+          transition={{ delay: 0.2, duration: 0.45, ease: EASE_OUT }}
           className="xl:col-span-2 brutal-border bg-surface p-6 flex flex-col group/card relative overflow-hidden"
         >
           <div className="flex justify-between items-center border-b border-line pb-4 mb-6">
@@ -575,7 +573,7 @@ function DashboardPage() {
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.28 }}
+          transition={{ delay: 0.28, duration: 0.45, ease: EASE_OUT }}
           className="brutal-border bg-surface p-6 flex flex-col group/card relative overflow-hidden"
         >
           <div className="flex justify-between items-center border-b border-line pb-4 mb-6">
@@ -637,7 +635,7 @@ function DashboardPage() {
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.35 }}
+          transition={{ delay: 0.35, duration: 0.45, ease: EASE_OUT }}
           className="brutal-border bg-surface"
         >
           <div className="flex justify-between items-center p-4 border-b border-line bg-ink text-surface">
@@ -682,7 +680,7 @@ function DashboardPage() {
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.42 }}
+          transition={{ delay: 0.42, duration: 0.45, ease: EASE_OUT }}
           className="brutal-border bg-surface"
         >
           {lowStockItems.length > 0 ? (

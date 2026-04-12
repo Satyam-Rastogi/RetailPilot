@@ -199,6 +199,84 @@ function ROField({ label, value }: { label: string; value?: string | null }) {
   )
 }
 
+// ── Price Browser PIN card ───────────────────────────────────────────────────
+const PIN_KEY = 'retailpilot_price_check_pin'
+
+function PinSettingsCard() {
+  const [pin, setPin] = useState(() => localStorage.getItem(PIN_KEY) ?? '')
+  const [input, setInput] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [editing, setEditing] = useState(false)
+  const [err, setErr] = useState('')
+
+  const save = () => {
+    if (!/^\d{4}$/.test(input)) { setErr('PIN must be exactly 4 digits'); return }
+    if (input !== confirm) { setErr('PINs do not match'); return }
+    localStorage.setItem(PIN_KEY, input)
+    setPin(input)
+    setInput(''); setConfirm(''); setErr('')
+    setEditing(false)
+  }
+  const clear = () => {
+    localStorage.removeItem(PIN_KEY)
+    setPin('')
+    setEditing(false)
+  }
+
+  return (
+    <div className="brutal-border bg-surface p-5">
+      <h3 className="text-base font-display font-bold uppercase border-b border-line pb-3 mb-4 flex items-center gap-2">
+        <span className="w-4 h-4 text-accent font-mono text-sm">🔒</span>
+        Price Browser PIN
+      </h3>
+      <p className="font-mono text-xs text-ink-light mb-4 leading-relaxed">
+        A 4-digit PIN required to exit the customer-facing Price Browser. If no PIN is set, exit is unrestricted.
+      </p>
+      {!editing ? (
+        <div className="flex items-center gap-3">
+          <span className="font-mono text-sm">
+            {pin ? <span className="text-success">PIN set ••••</span> : <span className="text-warning">No PIN set — exit is unrestricted</span>}
+          </span>
+          <button onClick={() => setEditing(true)} className="px-3 py-1.5 brutal-border font-mono text-xs uppercase tracking-widest hover:bg-ink hover:text-surface transition-colors">
+            {pin ? 'Change' : 'Set PIN'}
+          </button>
+          {pin && (
+            <button onClick={clear} className="px-3 py-1.5 brutal-border font-mono text-xs uppercase tracking-widest text-danger border-danger/40 hover:bg-danger hover:text-white transition-colors">
+              Remove
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3 max-w-xs">
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1">New PIN (4 digits)</label>
+            <input
+              type="password" inputMode="numeric" maxLength={4} value={input}
+              onChange={e => { setInput(e.target.value.replace(/\D/g, '')); setErr('') }}
+              className="w-full px-3 py-2 brutal-border bg-paper font-mono text-sm focus:outline-none focus:border-accent tracking-widest"
+              placeholder="••••"
+            />
+          </div>
+          <div>
+            <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1">Confirm PIN</label>
+            <input
+              type="password" inputMode="numeric" maxLength={4} value={confirm}
+              onChange={e => { setConfirm(e.target.value.replace(/\D/g, '')); setErr('') }}
+              className="w-full px-3 py-2 brutal-border bg-paper font-mono text-sm focus:outline-none focus:border-accent tracking-widest"
+              placeholder="••••"
+            />
+          </div>
+          {err && <p className="font-mono text-xs text-danger">{err}</p>}
+          <div className="flex gap-2">
+            <button onClick={save} className="px-4 py-2 bg-ink text-surface font-mono text-xs uppercase tracking-widest brutal-border hover:bg-accent hover:text-on-accent transition-colors">Save</button>
+            <button onClick={() => { setEditing(false); setInput(''); setConfirm(''); setErr('') }} className="px-4 py-2 brutal-border font-mono text-xs uppercase tracking-widest hover:border-ink transition-colors">Cancel</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Main page ───────────────────────────────────────────────────────────────
 function SettingsPage() {
   const queryClient = useQueryClient()
@@ -241,7 +319,7 @@ function SettingsPage() {
 
   const [companyForm, setCompanyForm] = useState({
     shop_name: '', shop_address: '', shop_phone: '', shop_gstin: '',
-    default_tax_rate: '18', currency_symbol: '₹',
+    default_tax_rate: '18', default_credit_days: '60', currency_symbol: '₹',
     receiver_bank_name: '', receiver_account_number: '', receiver_ifsc_code: '',
   })
 
@@ -252,6 +330,7 @@ function SettingsPage() {
       shop_phone: profile?.shop_phone || '',
       shop_gstin: profile?.shop_gstin || '',
       default_tax_rate: profile?.default_tax_rate?.toString() || '18',
+      default_credit_days: profile?.default_credit_days?.toString() || '60',
       currency_symbol: profile?.currency_symbol || '₹',
       receiver_bank_name: profile?.receiver_bank_name || '',
       receiver_account_number: profile?.receiver_account_number || '',
@@ -273,7 +352,11 @@ function SettingsPage() {
   const handleSaveCompany = (e: React.FormEvent) => {
     e.preventDefault()
     if (!companyForm.shop_name.trim()) { toast.error('Shop name is required.'); return }
-    upsertMutation.mutate({ ...companyForm, default_tax_rate: parseFloat(companyForm.default_tax_rate) })
+    upsertMutation.mutate({
+      ...companyForm,
+      default_tax_rate: parseFloat(companyForm.default_tax_rate),
+      default_credit_days: parseInt(companyForm.default_credit_days, 10) || 60,
+    })
   }
 
   const triggerPreview = (type: 'success' | 'error' | 'warning' | 'info') => {
@@ -359,6 +442,9 @@ function SettingsPage() {
         </div>
       </div>
 
+      {/* ── Price Browser PIN ─────────────────────────────────────────────── */}
+      <PinSettingsCard />
+
       {/* ── Row 2: User Profile (read-only + pencil) ──────────────────────── */}
       <div className="brutal-border bg-surface p-5">
         <div className="flex items-center justify-between border-b border-line pb-3 mb-4">
@@ -416,6 +502,7 @@ function SettingsPage() {
             </div>
             <div className="border-t border-line pt-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               <ROField label="Default Tax Rate" value={profile.default_tax_rate != null ? `${profile.default_tax_rate}%` : undefined} />
+              <ROField label="Default Credit Period" value={profile.default_credit_days != null ? `${profile.default_credit_days} days` : undefined} />
               <ROField label="Bank Name" value={profile.receiver_bank_name} />
               <ROField label="Account Number" value={profile.receiver_account_number} />
               <ROField label="IFSC Code" value={profile.receiver_ifsc_code} />
@@ -539,17 +626,26 @@ function SettingsPage() {
             </div>
           </div>
 
-          {/* Pricing */}
+          {/* Pricing & Credit */}
           <div>
-            <div className="font-mono text-[10px] uppercase tracking-widest text-ink-light border-b border-line pb-1.5 mb-3">Pricing</div>
+            <div className="font-mono text-[10px] uppercase tracking-widest text-ink-light border-b border-line pb-1.5 mb-3">Pricing &amp; Credit</div>
             <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2 sm:col-span-1">
+              <div>
                 <label htmlFor="default-tax-rate" className={labelClass}>Default Tax Rate (%)</label>
                 <input id="default-tax-rate" name="default_tax_rate" type="number" step="0.01" required
                   value={companyForm.default_tax_rate}
                   onChange={(e) => setCompanyForm({ ...companyForm, default_tax_rate: e.target.value })}
                   placeholder="18" className={inputClass}
                 />
+              </div>
+              <div>
+                <label htmlFor="default-credit-days" className={labelClass}>Default Credit Period (days)</label>
+                <input id="default-credit-days" name="default_credit_days" type="number" min="0" step="1"
+                  value={companyForm.default_credit_days}
+                  onChange={(e) => setCompanyForm({ ...companyForm, default_credit_days: e.target.value })}
+                  placeholder="60" className={inputClass}
+                />
+                <p className="mt-1 font-mono text-[10px] text-ink-muted">Invoices unpaid past this period show as overdue. Override per customer.</p>
               </div>
             </div>
           </div>

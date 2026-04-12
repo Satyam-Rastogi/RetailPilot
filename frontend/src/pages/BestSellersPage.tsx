@@ -10,6 +10,7 @@ import {
 import { ArrowLeft, X } from 'lucide-react'
 import { analyticsService } from '../services/api'
 import { useSettings } from '../components/SettingsProvider'
+import { ProductShelfSVG } from '../components/illustrations/HeaderIllustrations'
 import { cn } from '../lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -174,23 +175,6 @@ function BrandDetailModal({ brand, totalRevenue, onClose }: { brand: BrandItem; 
           </div>
         </div>
       </motion.div>
-    </div>
-  )
-}
-
-// ── Custom tooltip ────────────────────────────────────────────────────────────
-
-function ChartTooltip({ active, payload, label, valueLabel }: any) {
-  const { formatCurrency } = useSettings()
-  if (!active || !payload?.length) return null
-  const v = payload[0]?.value
-  return (
-    <div
-      className="p-3 text-xs font-mono space-y-1 pointer-events-none"
-      style={{ backgroundColor: 'rgba(8,8,8,0.93)', border: '1px solid rgba(255,255,255,0.12)', color: '#f0f0f0' }}
-    >
-      <p className="font-bold uppercase tracking-wider" style={{ color: '#F59E0B' }}>{label ?? payload[0]?.name}</p>
-      <p>{valueLabel ?? payload[0]?.name}: <span className="font-bold">{typeof v === 'number' && v > 500 ? formatCurrency(v) : v?.toLocaleString()}</span></p>
     </div>
   )
 }
@@ -365,13 +349,18 @@ export default function BestSellersPage() {
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
       {/* Header */}
-      <header className="border-b border-line pb-6">
-        <button onClick={() => navigate('/analytics')} className="flex items-center gap-1.5 text-ink-light hover:text-accent font-mono text-xs uppercase tracking-widest mb-3 transition-colors brutal-focus">
-          <ArrowLeft className="w-3.5 h-3.5" /> Analytics
-        </button>
-        <h1 className="type-display">Best Sellers</h1>
-        <p className="text-ink-light font-mono text-sm mt-2">Top items, brands, price brackets, and segment breakdown.</p>
-        <div className="w-12 h-0.5 bg-accent mt-4" />
+      <header className="border-b border-line pb-6 relative overflow-hidden">
+        <div className="absolute right-0 top-0 bottom-0 flex items-center pointer-events-none select-none">
+          <ProductShelfSVG className="w-72 h-44 text-ink opacity-35 dark:opacity-50" />
+        </div>
+        <div className="relative z-10">
+          <button onClick={() => navigate('/analytics')} className="flex items-center gap-1.5 text-ink-light hover:text-accent font-mono text-xs uppercase tracking-widest mb-3 transition-colors brutal-focus">
+            <ArrowLeft className="w-3.5 h-3.5" /> Analytics
+          </button>
+          <h1 className="type-display">Best Sellers</h1>
+          <p className="text-ink-light font-mono text-sm mt-2">Top items, brands, price brackets, and segment breakdown.</p>
+          <div className="w-12 h-0.5 bg-accent mt-4" />
+        </div>
       </header>
 
       {/* Controls */}

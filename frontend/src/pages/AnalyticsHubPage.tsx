@@ -6,17 +6,13 @@ import { ArrowRight, Lock } from 'lucide-react'
 import { analyticsService, reportService } from '../services/api'
 import { useSettings } from '../components/SettingsProvider'
 import { cn } from '../lib/utils'
-
-// ── Stagger variants ──────────────────────────────────────────────────────────
-
-const container = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.08, delayChildren: 0.05 } },
-}
-const fromLeft  = { hidden: { opacity: 0, x: -24 }, visible: { opacity: 1, x: 0, transition: { duration: 0.4, ease: [0.25, 0.8, 0.25, 1] } } }
-const fromBelow = { hidden: { opacity: 0, y: 24  }, visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: [0.25, 0.8, 0.25, 1] } } }
-const scaleUp   = { hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1, transition: { duration: 0.5, ease: [0.25, 0.8, 0.25, 1] } } }
-const fadeIn    = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { duration: 0.45 } } }
+import {
+  containerVariants as container,
+  cardVariants      as fromBelow,
+  slideFromLeftVariants as fromLeft,
+  scaleUpVariants   as scaleUp,
+  fadeInVariants    as fadeIn,
+} from '../lib/motionVariants'
 
 // ── Vintage shop-counter SVG ──────────────────────────────────────────────────
 // Line-art cash register with operator. Uses stroke-based drawing + fixed accent

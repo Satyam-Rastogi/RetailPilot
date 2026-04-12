@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { ArrowLeft, Plus, Pencil, Trash2, X, FileText } from 'lucide-react'
 import { ledgerService, customerService } from '../services/api'
+import { DatePicker, DateRangePicker } from '../components/DatePicker'
 import type { CustomerLedger, CustomerListResponse, Payment, PaginatedResponse } from '../types/api'
 import { useSettings } from '../components/SettingsProvider'
 import { cn } from '../lib/utils'
@@ -24,8 +25,6 @@ export default function LedgerPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const dateFrom = searchParams.get('from') ?? ''
   const dateTo   = searchParams.get('to')   ?? ''
-  const setDateFrom = (v: string) => setSearchParams(p => { const n = new URLSearchParams(p); v ? n.set('from', v) : n.delete('from'); return n }, { replace: true })
-  const setDateTo   = (v: string) => setSearchParams(p => { const n = new URLSearchParams(p); v ? n.set('to', v)   : n.delete('to');   return n }, { replace: true })
 
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerListResponse | null>(null)
 
@@ -327,26 +326,20 @@ export default function LedgerPage() {
 
             {/* Date Filters */}
             <div className="border-t border-line pt-6 flex flex-wrap gap-4 items-end">
-              <div className="flex-1 min-w-[180px]">
-                <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Date From</label>
-                <input
-                  type="date"
-                  value={dateFrom}
-                  onChange={(e) => setDateFrom(e.target.value)}
-                  className={inputClass}
-                />
-              </div>
-              <div className="flex-1 min-w-[180px]">
-                <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Date To</label>
-                <input
-                  type="date"
-                  value={dateTo}
-                  onChange={(e) => setDateTo(e.target.value)}
-                  className={inputClass}
+              <div>
+                <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Date Range</label>
+                <DateRangePicker
+                  from={dateFrom} to={dateTo}
+                  onChange={r => setSearchParams(p => {
+                    const n = new URLSearchParams(p)
+                    r.from ? n.set('from', r.from) : n.delete('from')
+                    r.to   ? n.set('to',   r.to)   : n.delete('to')
+                    return n
+                  }, { replace: true })}
                 />
               </div>
               <button
-                onClick={() => { setDateFrom(''); setDateTo('') }}
+                onClick={() => setSearchParams(p => { const n = new URLSearchParams(p); n.delete('from'); n.delete('to'); return n }, { replace: true })}
                 className="px-5 py-2.5 brutal-border font-mono text-sm uppercase tracking-wider hover:border-accent hover:text-accent transition-colors brutal-focus"
               >
                 Clear
@@ -578,12 +571,9 @@ export default function LedgerPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Date *</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={paymentForm.date}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
-                  className={inputClass}
-                  required
+                  onChange={v => setPaymentForm({ ...paymentForm, date: v })}
                 />
               </div>
               <div>
@@ -692,12 +682,9 @@ export default function LedgerPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Date *</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={paymentForm.date}
-                  onChange={(e) => setPaymentForm({ ...paymentForm, date: e.target.value })}
-                  className={inputClass}
-                  required
+                  onChange={v => setPaymentForm({ ...paymentForm, date: v })}
                 />
               </div>
               <div>

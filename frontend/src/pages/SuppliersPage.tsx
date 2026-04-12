@@ -8,6 +8,9 @@ import { supplierService } from '../services/api'
 import type { Supplier, SupplierListResponse, PaginatedResponse } from '../types/api'
 import Pagination from '../components/Pagination'
 import { MagneticButton } from '../components/MagneticButton'
+import { EmptyState } from '../components/EmptyState'
+import { SkeletonListPage } from '../components/Skeleton'
+import { MissingTruckSVG } from '../components/illustrations/EmptyStateIllustrations'
 
 const PAGE_SIZE = 20
 
@@ -149,9 +152,7 @@ function SuppliersPage() {
 
       {/* Table / States */}
       {isLoading ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light">Loading...</p>
-        </div>
+        <SkeletonListPage rows={6} />
       ) : rows.length > 0 ? (
         <div className="brutal-border bg-surface overflow-hidden">
           <table className="w-full">
@@ -204,20 +205,13 @@ function SuppliersPage() {
           />
         </div>
       ) : (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light mb-1">No suppliers found</p>
-          <p className="font-mono text-xs text-ink-light opacity-60">
-            {search ? 'No suppliers match your search' : 'Add your first supplier to get started'}
-          </p>
-          {!search && (
-            <button
-              onClick={() => { resetForm(); setShowModal(true) }}
-              className="mt-6 px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
-            >
-              Add Supplier
-            </button>
-          )}
-        </div>
+        <EmptyState
+          illustration={<MissingTruckSVG />}
+          title="No Suppliers Found"
+          description={search ? 'No suppliers match your search' : 'Add your first supplier to get started'}
+          ctaLabel={!search ? 'Add Supplier' : undefined}
+          onCta={!search ? () => { resetForm(); setShowModal(true) } : undefined}
+        />
       )}
 
       {/* Modal */}

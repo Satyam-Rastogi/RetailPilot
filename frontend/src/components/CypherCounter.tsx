@@ -1,56 +1,98 @@
 import { useEffect, useRef, useState } from 'react'
 
-const CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*?'
+// Digits + uppercase letters — clean for currency/number scramble.
+// Symbols removed: they look too "cyberpunk" for a retail app.
+const SCRAMBLE = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+// Chars that are shown as-is throughout the animation (not scrambled).
+const PASS_THROUGH = new Set([' ', ',', '.', '-', '₹', '%', '+', '(', ')'])
+
+/** Cubic ease-out: fast reveal at start, smooth landing at the end. */
+function easeOut(t: number): number {
+  return 1 - Math.pow(1 - t, 3)
+}
+
+function scrambled(target: string): string {
+  return target
+    .split('')
+    .map(ch => (PASS_THROUGH.has(ch) ? ch : SCRAMBLE[0]))
+    .join('')
+}
 
 interface CypherCounterProps {
   value: number
   formatter: (val: number) => string
   className?: string
+  /** Animation duration in ms. Default 1000. */
   duration?: number
 }
 
-export function CypherCounter({ value, formatter, className = '', duration = 1400 }: CypherCounterProps) {
+export function CypherCounter({ value, formatter, className = '', duration = 1000 }: CypherCounterProps) {
   const target = formatter(value)
-  const [display, setDisplay] = useState(() => target.replace(/[^ ,.]/g, CHARS[0]))
-  const targetRef = useRef(target)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => { targetRef.current = target }, [target])
+  // Start fully scrambled so the animation always plays when data arrives.
+  const [display, setDisplay] = useState(() => scrambled(target))
+  const rafRef   = useRef<number | null>(null)
+  const startRef = useRef<number | null>(null)
+  // Track prev target so we only restart on real changes.
+  const prevRef  = useRef<string>(target)
 
   useEffect(() => {
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+    const t = formatter(value)
 
-    const t = targetRef.current
-    const totalFrames = Math.max(1, Math.floor(duration / 40))
-    let frame = 0
+    // Nothing changed — don't restart the scramble.
+    if (t === prevRef.current && rafRef.current === null) {
+      setDisplay(t)
+      return
+    }
+    prevRef.current = t
 
-    intervalRef.current = setInterval(() => {
-      frame += 1
-      const progress = frame / totalFrames
-      const revealedCount = Math.floor(progress * t.length)
+    // Cancel any in-flight animation.
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current)
+      rafRef.current  = null
+      startRef.current = null
+    }
+
+    const tick = (now: number) => {
+      if (startRef.current === null) startRef.current = now
+
+      const elapsed     = now - startRef.current
+      const rawProgress = Math.min(elapsed / duration, 1)
+      const progress    = easeOut(rawProgress)
+      const revealed    = Math.floor(progress * t.length)
 
       let result = ''
       for (let i = 0; i < t.length; i++) {
-        if (i < revealedCount) {
-          result += t[i]
-        } else if ([' ', ',', '.', '-'].includes(t[i])) {
+        if (i < revealed || PASS_THROUGH.has(t[i])) {
           result += t[i]
         } else {
-          result += CHARS[Math.floor(Math.random() * CHARS.length)]
+          result += SCRAMBLE[Math.floor(Math.random() * SCRAMBLE.length)]
         }
       }
 
       setDisplay(result)
 
-      if (frame >= totalFrames) {
+      if (rawProgress < 1) {
+        rafRef.current = requestAnimationFrame(tick)
+      } else {
+        // Guarantee the final value is pixel-perfect.
         setDisplay(t)
-        if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null }
+        rafRef.current  = null
+        startRef.current = null
       }
-    }, 40)
+    }
 
-    return () => { if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null } }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, duration])
+    rafRef.current = requestAnimationFrame(tick)
+
+    return () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current)
+        rafRef.current  = null
+        startRef.current = null
+      }
+    }
+    // formatter is a stable callback from useSettings — safe to include
+  }, [value, formatter, duration])
 
   return (
     <span

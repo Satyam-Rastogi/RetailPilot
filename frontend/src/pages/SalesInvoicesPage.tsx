@@ -10,6 +10,10 @@ import Pagination from '../components/Pagination'
 import ReturnsPanel from './ReturnsPanel'
 import { MagneticButton } from '../components/MagneticButton'
 import { CreateInvoiceModal } from '../components/CreateInvoiceModal'
+import { EmptyState } from '../components/EmptyState'
+import { SkeletonListPage } from '../components/Skeleton'
+import { EmptyClipboardSVG } from '../components/illustrations/EmptyStateIllustrations'
+import { DatePicker, DateRangePicker } from '../components/DatePicker'
 import { cn } from '../lib/utils'
 
 const PAGE_SIZE = 20
@@ -415,17 +419,14 @@ function SalesInvoicesPage() {
       {/* ── Filters ─────────────────────────────────────────────────────── */}
       <div className="brutal-border bg-surface p-4">
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-          <div>
-            <label className={labelCls}>From</label>
-            <input type="date" value={filters.date_from}
-              onChange={(e) => setFilters({ ...filters, date_from: e.target.value })}
-              className={inputCls} />
-          </div>
-          <div>
-            <label className={labelCls}>To</label>
-            <input type="date" value={filters.date_to}
-              onChange={(e) => setFilters({ ...filters, date_to: e.target.value })}
-              className={inputCls} />
+          <div className="col-span-2">
+            <label className={labelCls}>Date Range</label>
+            <DateRangePicker
+              from={filters.date_from} to={filters.date_to}
+              max={format(new Date(), 'yyyy-MM-dd')}
+              onChange={r => setFilters({ ...filters, date_from: r.from, date_to: r.to })}
+              className="w-full"
+            />
           </div>
           <div>
             <label className={labelCls}>Invoice #</label>
@@ -469,9 +470,7 @@ function SalesInvoicesPage() {
 
       {/* ── Table ───────────────────────────────────────────────────────── */}
       {isLoading ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-xs uppercase tracking-widest text-ink-light">Loading invoices...</p>
-        </div>
+        <SkeletonListPage rows={6} />
       ) : invoices && invoices.data.length > 0 ? (
         <div className="brutal-border bg-surface overflow-hidden">
           <div className="overflow-x-auto">
@@ -581,10 +580,11 @@ function SalesInvoicesPage() {
           />
         </div>
       ) : (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <FileText className="w-10 h-10 text-ink-muted mx-auto mb-4" />
-          <p className="font-mono text-xs uppercase tracking-widest text-ink-light">No invoices found</p>
-        </div>
+        <EmptyState
+          illustration={<EmptyClipboardSVG />}
+          title="No Invoices Found"
+          description="No invoices match your current filters"
+        />
       )}
 
       {/* ── Create Invoice Modal ─────────────────────────────────────────── */}
@@ -738,9 +738,10 @@ function SalesInvoicesPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <label className={labelCls}>Invoice Date</label>
-                      <input type="date" value={editFormData.invoice_date}
-                        onChange={(e) => setEditFormData({ ...editFormData, invoice_date: e.target.value })}
-                        className={inputCls} />
+                      <DatePicker
+                        value={editFormData.invoice_date}
+                        onChange={v => setEditFormData({ ...editFormData, invoice_date: v })}
+                      />
                     </div>
                     <div>
                       <label className={labelCls}>CGST (%)</label>

@@ -478,9 +478,29 @@ def get_customer_ledger(
       )
     )
 
+  # Opening balance: sum of all invoices minus payments BEFORE date_from.
+  # This lets the frontend show a meaningful running balance even on filtered views.
+  opening_balance = 0.0
+  if date_from:
+    from_dt = datetime.strptime(date_from, "%Y-%m-%d")
+    inv_before = db.query(InvoiceModel).filter(
+      InvoiceModel.customer_id == customer_id,
+      InvoiceModel.invoice_date < from_dt
+    ).all()
+    pay_before = db.query(PaymentModel).filter(
+      PaymentModel.customer_id == customer_id,
+      PaymentModel.date < from_dt
+    ).all()
+    opening_balance = sum(i.grand_total for i in inv_before) - sum(p.amount for p in pay_before)
+
   return CustomerLedgerResponse(
     customer_id=customer.id,
     customer_name=customer.name,
+    customer_phone=customer.phone_number,
+    customer_address=customer.address,
+    customer_gstin=customer.gstin,
+    credit_days=customer.credit_days if customer.credit_days else None,
+    opening_balance=round(opening_balance, 2),
     total_invoiced=total_invoiced,
     total_paid=total_paid,
     total_unpaid=total_unpaid,

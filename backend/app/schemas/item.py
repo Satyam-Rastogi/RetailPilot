@@ -9,12 +9,16 @@ class ItemVariantCreate(BaseModel):
   variant_value: str
   sku: Optional[str] = None
   stock_quantity: Optional[int] = 0
+  price_override: Optional[float] = None
+  low_stock_threshold: Optional[int] = None
 
 
 class ItemVariantUpdate(BaseModel):
   variant_value: Optional[str] = None
   sku: Optional[str] = None
   stock_quantity: Optional[int] = None
+  price_override: Optional[float] = None
+  low_stock_threshold: Optional[int] = None
 
 
 class ItemVariantResponse(BaseModel):
@@ -25,6 +29,8 @@ class ItemVariantResponse(BaseModel):
   variant_value: str
   sku: Optional[str] = None
   stock_quantity: int
+  price_override: Optional[float] = None
+  low_stock_threshold: Optional[int] = None
   created_at: datetime
 
 

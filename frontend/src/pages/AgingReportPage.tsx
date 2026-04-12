@@ -2,6 +2,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { reportService } from '../services/api'
 import type { AgingReportResponse } from '../types/api'
+import { OverdueDeskSVG } from '../components/illustrations/HeaderIllustrations'
 
 const fmt = (n: number) =>
   n === 0
@@ -40,22 +41,28 @@ export default function AgingReportPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-display font-bold text-2xl uppercase tracking-tighter">Aging Report</h1>
-          <p className="text-xs font-mono text-ink-light uppercase tracking-widest mt-0.5">
-            Unpaid invoices bucketed by days overdue
-          </p>
+      <div className="border-b border-line pb-5 relative overflow-hidden">
+        {/* Illustration — sits behind content */}
+        <div className="absolute right-0 top-0 bottom-0 flex items-center pointer-events-none select-none">
+          <OverdueDeskSVG className="w-72 h-36 text-ink opacity-35 dark:opacity-50" />
         </div>
-        <select
-          value={customerType}
-          onChange={e => setCustomerType(e.target.value)}
-          className="px-3 py-2 brutal-border bg-paper text-ink font-mono text-xs uppercase tracking-wider focus:outline-none focus:border-accent transition-colors"
-        >
-          <option value="">All Types</option>
-          <option value="Retail">Retail</option>
-          <option value="Wholesale">Wholesale</option>
-        </select>
+        <div className="relative z-10 flex items-center justify-between">
+          <div>
+            <h1 className="font-display font-bold text-2xl uppercase tracking-tighter">Aging Report</h1>
+            <p className="text-xs font-mono text-ink-light uppercase tracking-widest mt-0.5">
+              Unpaid invoices bucketed by days overdue
+            </p>
+          </div>
+          <select
+            value={customerType}
+            onChange={e => setCustomerType(e.target.value)}
+            className="px-3 py-2 brutal-border bg-paper text-ink font-mono text-xs uppercase tracking-wider focus:outline-none focus:border-accent transition-colors"
+          >
+            <option value="">All Types</option>
+            <option value="Retail">Retail</option>
+            <option value="Wholesale">Wholesale</option>
+          </select>
+        </div>
       </div>
 
       {/* Error */}

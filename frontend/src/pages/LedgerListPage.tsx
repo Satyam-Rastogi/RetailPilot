@@ -3,6 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { customerService } from '../services/api'
 import type { CustomerOutstanding } from '../types/api'
+import { EmptyState } from '../components/EmptyState'
+import { SkeletonListPage } from '../components/Skeleton'
+import { EmptyWalletSVG } from '../components/illustrations/EmptyStateIllustrations'
 
 type SortField = 'name' | 'outstanding' | 'overdue' | 'oldest_unpaid'
 type SortDir = 'asc' | 'desc'
@@ -286,9 +289,7 @@ export default function LedgerListPage() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light">Loading receivables...</p>
-        </div>
+        <SkeletonListPage rows={6} />
       ) : error ? (
         <div className="brutal-border bg-surface p-16 text-center">
           <p className="font-mono text-sm uppercase tracking-widest text-danger mb-2">Error Loading Receivables</p>
@@ -303,24 +304,15 @@ export default function LedgerListPage() {
           </button>
         </div>
       ) : !customers || customers.length === 0 ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light mb-2">
-            {showZeroBalance ? 'No Customers Found' : 'No Outstanding Balances'}
-          </p>
-          <p className="font-mono text-xs text-ink-light mb-6">
-            {showZeroBalance
-              ? 'No customers match the current filters.'
-              : 'All customers are settled. Toggle "Show Settled" to see all customers.'}
-          </p>
-          {!showZeroBalance && (
-            <button
-              onClick={() => setShowZeroBalance(true)}
-              className="px-5 py-2.5 bg-accent text-on-accent font-mono text-sm uppercase tracking-wider brutal-border brutal-shadow brutal-shadow-accent-hover active:brutal-shadow-accent-active brutal-focus transition-all"
-            >
-              Show All Customers
-            </button>
-          )}
-        </div>
+        <EmptyState
+          illustration={<EmptyWalletSVG />}
+          title={showZeroBalance ? 'No Customers Found' : 'No Outstanding Balances'}
+          description={showZeroBalance
+            ? 'No customers match the current filters'
+            : 'All customers are settled — the books are clear'}
+          ctaLabel={!showZeroBalance ? 'Show All Customers' : undefined}
+          onCta={!showZeroBalance ? () => setShowZeroBalance(true) : undefined}
+        />
       ) : (
         <>
           {/* Summary Stats */}

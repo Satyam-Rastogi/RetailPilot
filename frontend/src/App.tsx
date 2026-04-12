@@ -21,6 +21,9 @@ import NotFoundPage from './pages/NotFoundPage'
 import AnalyticsHubPage from './pages/AnalyticsHubPage'
 import InventoryAnalyticsPage from './pages/InventoryAnalyticsPage'
 import BestSellersPage from './pages/BestSellersPage'
+import GstSummaryPage from './pages/GstSummaryPage'
+import PnLPage from './pages/PnLPage'
+import PriceCheckPage from './pages/PriceCheckPage'
 
 function App() {
   return (
@@ -46,6 +49,9 @@ function App() {
           <Route path="/analytics" element={<AnalyticsHubPage />} />
           <Route path="/analytics/inventory" element={<InventoryAnalyticsPage />} />
           <Route path="/analytics/best-sellers" element={<BestSellersPage />} />
+          <Route path="/reports/gst" element={<GstSummaryPage />} />
+          <Route path="/reports/pnl" element={<PnLPage />} />
+          <Route path="/price-check" element={<PriceCheckPage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </ErrorBoundary>

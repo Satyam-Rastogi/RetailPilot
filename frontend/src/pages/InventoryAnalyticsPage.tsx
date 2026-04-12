@@ -6,9 +6,10 @@ import {
   ScatterChart, Scatter, XAxis, YAxis, ZAxis, Tooltip as RTooltip,
   ResponsiveContainer, Cell, BarChart, Bar, CartesianGrid,
 } from 'recharts'
-import { ArrowLeft, X, Package, AlertTriangle, TrendingDown, ArchiveX } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { analyticsService } from '../services/api'
 import { useSettings } from '../components/SettingsProvider'
+import { WarehouseSVG } from '../components/illustrations/HeaderIllustrations'
 import { cn } from '../lib/utils'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -47,7 +48,6 @@ function classifyItem(item: InventoryItem, medianStock: number, medianSold: numb
 
 function ItemDetailModal({ item, onClose }: { item: InventoryItem; onClose: () => void }) {
   const { formatCurrency } = useSettings()
-  const statusColors = { in_stock: 'success', low_stock: 'warning', out_of_stock: 'danger' } as const
   const statusLabels = { in_stock: 'In Stock', low_stock: 'Low Stock', out_of_stock: 'Out of Stock' }
 
   return (
@@ -223,7 +223,6 @@ export default function InventoryAnalyticsPage() {
 
   const summary    = data?.summary
   const items: InventoryItem[] = data?.items ?? []
-  const byCategory = data?.by_category ?? []
   const byBrand    = data?.by_brand ?? []
 
   // Medians for scatter quadrant classification
@@ -303,13 +302,18 @@ export default function InventoryAnalyticsPage() {
   return (
     <div className="p-6 md:p-8 space-y-8 max-w-7xl mx-auto">
       {/* Breadcrumb + header */}
-      <header className="border-b border-line pb-6">
-        <button onClick={() => navigate('/analytics')} className="flex items-center gap-1.5 text-ink-light hover:text-accent font-mono text-xs uppercase tracking-widest mb-3 transition-colors brutal-focus">
-          <ArrowLeft className="w-3.5 h-3.5" /> Analytics
-        </button>
-        <h1 className="type-display">Stock Intelligence</h1>
-        <p className="text-ink-light font-mono text-sm mt-2">Inventory valuation, stock health, and fast/slow movers.</p>
-        <div className="w-12 h-0.5 bg-accent mt-4" />
+      <header className="border-b border-line pb-6 relative overflow-hidden">
+        <div className="absolute right-0 top-0 bottom-0 flex items-center pointer-events-none select-none">
+          <WarehouseSVG className="w-72 h-44 text-ink opacity-35 dark:opacity-50" />
+        </div>
+        <div className="relative z-10">
+          <button onClick={() => navigate('/analytics')} className="flex items-center gap-1.5 text-ink-light hover:text-accent font-mono text-xs uppercase tracking-widest mb-3 transition-colors brutal-focus">
+            <ArrowLeft className="w-3.5 h-3.5" /> Analytics
+          </button>
+          <h1 className="type-display">Stock Intelligence</h1>
+          <p className="text-ink-light font-mono text-sm mt-2">Inventory valuation, stock health, and fast/slow movers.</p>
+          <div className="w-12 h-0.5 bg-accent mt-4" />
+        </div>
       </header>
 
       {/* ── Summary tiles ────────────────────────────────────────────────────── */}

@@ -8,6 +8,10 @@ import { toast } from '../lib/toast'
 import { returnService, customerService, itemService } from '../services/api'
 import { ReturnReasonCategory, type ReturnReceipt } from '../types/api'
 import { useSettings } from '../components/SettingsProvider'
+import { EmptyState } from '../components/EmptyState'
+import { SkeletonListPage } from '../components/Skeleton'
+import { ReturnBoxSVG } from '../components/illustrations/EmptyStateIllustrations'
+import { DatePicker } from '../components/DatePicker'
 import { cn } from '../lib/utils'
 
 interface GRItem {
@@ -328,16 +332,13 @@ function ReturnsListPage() {
 
       {/* Content */}
       {isLoading ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light">Loading returns...</p>
-        </div>
+        <SkeletonListPage rows={6} />
       ) : !returns || returns.length === 0 ? (
-        <div className="brutal-border bg-surface p-16 text-center">
-          <p className="font-mono text-sm uppercase tracking-widest text-ink-light mb-2">No returns found</p>
-          <p className="font-mono text-xs text-ink-light opacity-60">
-            {reasonCategory || returnType !== 'all' ? 'Try adjusting your filters' : 'No return receipts recorded yet'}
-          </p>
-        </div>
+        <EmptyState
+          illustration={<ReturnBoxSVG />}
+          title="No Returns Found"
+          description={(reasonCategory || returnType !== 'all') ? 'Try adjusting your filters' : 'No return receipts recorded yet'}
+        />
       ) : (
         <>
           <div className="brutal-border bg-surface overflow-hidden">
@@ -504,12 +505,9 @@ function ReturnsListPage() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Return Date *</label>
-                    <input
-                      type="date"
-                      required
+                    <DatePicker
                       value={grFormData.return_date}
-                      onChange={(e) => setGrFormData({ ...grFormData, return_date: e.target.value })}
-                      className={inputClass}
+                      onChange={v => setGrFormData({ ...grFormData, return_date: v })}
                     />
                   </div>
                 </div>
@@ -803,11 +801,9 @@ function ReturnsListPage() {
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
                 <label className="block text-[10px] font-mono uppercase tracking-widest text-ink-light mb-1.5">Return Date</label>
-                <input
-                  type="date"
+                <DatePicker
                   value={editFormData.return_date}
-                  onChange={(e) => setEditFormData({ ...editFormData, return_date: e.target.value })}
-                  className={inputClass}
+                  onChange={v => setEditFormData({ ...editFormData, return_date: v })}
                 />
               </div>
               <div>

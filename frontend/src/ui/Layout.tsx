@@ -40,7 +40,7 @@ function LayoutInner({ children }: LayoutProps) {
 
       <main className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto relative z-10">
         {/* Mobile Header */}
-        <div className="md:hidden flex items-center p-4 border-b border-line bg-surface sticky top-0 z-30">
+        <div className="md:hidden print:hidden flex items-center p-4 border-b border-line bg-surface sticky top-0 z-30">
           <button
             onClick={() => setIsMobileOpen(true)}
             className="p-2 -ml-2 border border-transparent hover:border-accent hover:text-accent text-ink transition-colors"
@@ -50,7 +50,7 @@ function LayoutInner({ children }: LayoutProps) {
           <span className="ml-2 font-display font-bold text-lg uppercase tracking-tight">RetailPilot</span>
         </div>
 
-        <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full">
+        <div className="flex-1 p-4 md:p-8 max-w-7xl mx-auto w-full print:p-0 print:max-w-none print:mx-0">
           <ErrorBoundary>
             <AnimatePresence mode="wait">
               <motion.div
@@ -59,6 +59,7 @@ function LayoutInner({ children }: LayoutProps) {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 8 }}
                 transition={{ duration: 0.22, ease: 'easeOut' }}
+                className="print:!opacity-100 print:!transform-none"
               >
                 {children}
               </motion.div>

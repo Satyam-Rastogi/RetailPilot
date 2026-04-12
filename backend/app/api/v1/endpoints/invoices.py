@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.models.invoice import InvoiceModel, InvoiceLineItemModel, PaymentStatus
 from app.models.customer import CustomerModel
 from app.models.item import ItemModel
+from app.models.item_variant import ItemVariantModel
 from app.models.payment import PaymentModel, PaymentAllocationModel
 from app.models.invoice_sequence import InvoiceSequenceModel
 from app.models.company_profile import CompanyProfileModel
@@ -329,6 +330,8 @@ def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
       {
         'item_id': li.item_id,
         'item_name': li.item.item_name if li.item else None,
+        'variant_id': li.variant_id,
+        'variant_value': li.variant_value,
         'quantity': li.quantity,
         'price': li.price,
         'discount_amount': li.discount_amount,
@@ -492,15 +495,47 @@ def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
     db_item = db.query(ItemModel).filter(ItemModel.id == item['item_id']).first()
     if not db_item:
       raise HTTPException(status_code=404, detail=f"Item with id {item['item_id']} not found")
-    if db_item.current_stock_quantity < item['quantity']:
-      raise HTTPException(status_code=400, detail=f"Insufficient stock for item {db_item.item_name}")
+
+    variant_id = item.get('variant_id')
+    if variant_id:
+      # Validate that the variant belongs to this item and has enough stock
+      db_variant = db.query(ItemVariantModel).filter(
+        ItemVariantModel.id == variant_id,
+        ItemVariantModel.item_id == db_item.id,
+      ).first()
+      if not db_variant:
+        raise HTTPException(status_code=404, detail=f"Variant {variant_id} not found for item {db_item.item_name}")
+      if db_variant.stock_quantity < item['quantity']:
+        raise HTTPException(status_code=400, detail=f"Insufficient stock for {db_item.item_name} — {db_variant.variant_value}")
+    else:
+      if db_item.current_stock_quantity < item['quantity']:
+        raise HTTPException(status_code=400, detail=f"Insufficient stock for item {db_item.item_name}")
 
   # All valid — now create line items and deduct stock
   for item in invoice_data.get('line_items', []):
     db_item = db.query(ItemModel).filter(ItemModel.id == item['item_id']).first()
+    variant_id = item.get('variant_id')
+    variant_value_snapshot = item.get('variant_value')
+
+    if variant_id:
+      db_variant = db.query(ItemVariantModel).filter(
+        ItemVariantModel.id == variant_id,
+        ItemVariantModel.item_id == db_item.id,
+      ).first()
+      # Deduct variant stock and update aggregate parent stock
+      db_variant.stock_quantity -= item['quantity']
+      db_item.current_stock_quantity = sum(v.stock_quantity for v in db_item.variants if v.id != db_variant.id) + db_variant.stock_quantity
+      variant_value_snapshot = variant_value_snapshot or db_variant.variant_value
+      delta_after = db_variant.stock_quantity
+    else:
+      db_item.current_stock_quantity -= item['quantity']
+      delta_after = db_item.current_stock_quantity
+
     line_item = InvoiceLineItemModel(
       invoice_id=db_invoice.id,
       item_id=item['item_id'],
+      variant_id=variant_id,
+      variant_value=variant_value_snapshot,
       quantity=item['quantity'],
       price=item['price'],
       discount_amount=item.get('discount_amount'),
@@ -508,11 +543,11 @@ def create_invoice(invoice_data: dict, db: Session = Depends(get_db)):
       gst_rate=item.get('gst_rate') if item.get('gst_rate') is not None else db_item.gst_rate,
     )
     db.add(line_item)
-    db_item.current_stock_quantity -= item['quantity']
     db.add(StockAuditModel(
       item_id=db_item.id,
+      variant_id=variant_id,
       delta=-item['quantity'],
-      delta_after=db_item.current_stock_quantity,
+      delta_after=delta_after,
       reason=f"Sold — Invoice #{db_invoice.invoice_number}",
     ))
 

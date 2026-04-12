@@ -42,3 +42,20 @@ export function SkeletonTable({ rows = 5 }: { rows?: number }) {
     </div>
   )
 }
+
+/** Full-width skeleton that matches the brutal-border table container used in list pages */
+export function SkeletonListPage({ rows = 6 }: { rows?: number }) {
+  return (
+    <div className="brutal-border bg-surface overflow-hidden">
+      {/* Fake header row */}
+      <div className="flex items-center gap-6 px-4 py-3 border-b border-line bg-surface">
+        <Skeleton className="h-2 w-20" />
+        <Skeleton className="h-2 w-28" />
+        <Skeleton className="h-2 w-16" />
+        <Skeleton className="h-2 w-20" />
+        <Skeleton className="h-2 w-16 ml-auto" />
+      </div>
+      <SkeletonTable rows={rows} />
+    </div>
+  )
+}
